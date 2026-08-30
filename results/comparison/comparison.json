@@ -1,0 +1,135 @@
+{
+  "dataset": "synthetic_paysim",
+  "test_set_size": 6000,
+  "test_fraud_rate": 0.060333333909511566,
+  "methodology": "All four models are evaluated on the identical held-out test set (pooled test_temporal.pt across all clients, never used in any model's training). Centralized models train on all clients' data pooled together (no privacy). Federated models never pool raw data. Federated training budget: 10 rounds x 3 clients/round x 2 local epochs. Centralized deep model: 5 epochs over the full pooled training set (not identical compute budget - see train_seconds per model).",
+  "models": {
+    "centralized_rf": {
+      "name": "Centralized RandomForest",
+      "description": "Classical ML baseline. All clients' raw data pooled into one place, one model.",
+      "privacy": {
+        "data_locality": false,
+        "differential_privacy": false,
+        "epsilon": null,
+        "tier": "none"
+      },
+      "metrics": {
+        "accuracy": 0.9826666666666667,
+        "precision": 0.9574468085106383,
+        "recall": 0.7458563535911602,
+        "f1": 0.8385093167701864,
+        "roc_auc": 0.9474109191966902,
+        "pr_auc": 0.8826225183730196,
+        "train_seconds": 3.1
+      }
+    },
+    "centralized_deep": {
+      "name": "Centralized Deep Model",
+      "description": "Same Temporal Graph Transformer architecture, but all clients' raw data pooled - isolates the cost of federation alone (no DP either).",
+      "privacy": {
+        "data_locality": false,
+        "differential_privacy": false,
+        "epsilon": null,
+        "tier": "none"
+      },
+      "metrics": {
+        "loss": 0.3898812361220096,
+        "accuracy": 0.9771666666666666,
+        "precision": 0.900355871886121,
+        "recall": 0.6988950276243094,
+        "f1": 0.7869362363919129,
+        "roc_auc": 0.9411437581211941,
+        "pr_auc": 0.8295682039989835,
+        "confusion_matrix": [
+          [
+            5610,
+            28
+          ],
+          [
+            109,
+            253
+          ]
+        ],
+        "fpr": 0.004966300106420717,
+        "fnr": 0.3011049723756906,
+        "tp": 253,
+        "fp": 28,
+        "tn": 5610,
+        "fn": 109,
+        "train_seconds": 116.0
+      }
+    },
+    "federated_fedavg": {
+      "name": "Federated (FedAvg, no DP)",
+      "description": "Same architecture, data never leaves clients, but no differential privacy - isolates the cost of DP alone (federation is already applied).",
+      "privacy": {
+        "data_locality": true,
+        "differential_privacy": false,
+        "epsilon": null,
+        "tier": "federated_only"
+      },
+      "metrics": {
+        "loss": 0.3999540333418136,
+        "accuracy": 0.974,
+        "precision": 0.8410596026490066,
+        "recall": 0.7016574585635359,
+        "f1": 0.7650602409638554,
+        "roc_auc": 0.9397782215785152,
+        "pr_auc": 0.8132180455733793,
+        "confusion_matrix": [
+          [
+            5590,
+            48
+          ],
+          [
+            108,
+            254
+          ]
+        ],
+        "fpr": 0.008513657325292657,
+        "fnr": 0.2983425414364641,
+        "tp": 254,
+        "fp": 48,
+        "tn": 5590,
+        "fn": 108,
+        "train_seconds": 261.2
+      }
+    },
+    "federated_fedprox_dp": {
+      "name": "Federated (FedProx + DP) \u2014 this project",
+      "description": "Data never leaves clients (FedProx handles non-IID drift) AND each round's aggregate is clipped + noised (client-level DP-FedAvg, epsilon=100.0).",
+      "privacy": {
+        "data_locality": true,
+        "differential_privacy": true,
+        "epsilon": 100.0,
+        "tier": "federated_dp"
+      },
+      "metrics": {
+        "loss": 0.41021101668160015,
+        "accuracy": 0.975,
+        "precision": 0.8581081081081081,
+        "recall": 0.7016574585635359,
+        "f1": 0.7720364741641338,
+        "roc_auc": 0.9347614549260248,
+        "pr_auc": 0.8084483958764338,
+        "confusion_matrix": [
+          [
+            5596,
+            42
+          ],
+          [
+            108,
+            254
+          ]
+        ],
+        "fpr": 0.007449450159631075,
+        "fnr": 0.2983425414364641,
+        "tp": 254,
+        "fp": 42,
+        "tn": 5596,
+        "fn": 108,
+        "train_seconds": 166.2
+      }
+    }
+  }
+}

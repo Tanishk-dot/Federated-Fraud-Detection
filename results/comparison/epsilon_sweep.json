@@ -1,0 +1,89 @@
+{
+  "dataset": "synthetic_paysim",
+  "test_set_size": 6000,
+  "test_fraud_rate": 0.060333333909511566,
+  "methodology": "Same FedProx-federated model (mu=0.1), same 10 rounds, same held-out test set as run_model_comparison.py's baseline D, swept across epsilon with everything else held fixed. epsilon=null means no DP noise (the ceiling).",
+  "points": [
+    {
+      "epsilon": 1.0,
+      "accuracy": 0.060333333333333336,
+      "precision": 0.060333333333333336,
+      "recall": 1.0,
+      "f1": 0.11380069160641308,
+      "roc_auc": 0.5,
+      "train_seconds": 146.0
+    },
+    {
+      "epsilon": 5.0,
+      "accuracy": 0.06183333333333333,
+      "precision": 0.06042396928726423,
+      "recall": 1.0,
+      "f1": 0.11396190776011333,
+      "roc_auc": 0.44226602631315914,
+      "train_seconds": 170.9
+    },
+    {
+      "epsilon": 10.0,
+      "accuracy": 0.7405,
+      "precision": 0.07952146375791697,
+      "recall": 0.31215469613259667,
+      "f1": 0.126752664049355,
+      "roc_auc": 0.5765920480402321,
+      "train_seconds": 164.4
+    },
+    {
+      "epsilon": 20.0,
+      "accuracy": 0.967,
+      "precision": 0.8014705882352942,
+      "recall": 0.6022099447513812,
+      "f1": 0.6876971608832808,
+      "roc_auc": 0.9162081397149179,
+      "train_seconds": 147.8
+    },
+    {
+      "epsilon": 50.0,
+      "accuracy": 0.9753333333333334,
+      "precision": 0.9083969465648855,
+      "recall": 0.6574585635359116,
+      "f1": 0.7628205128205128,
+      "roc_auc": 0.9302248554108958,
+      "train_seconds": 121.1
+    },
+    {
+      "epsilon": 100.0,
+      "accuracy": 0.9708333333333333,
+      "precision": 0.7741935483870968,
+      "recall": 0.7292817679558011,
+      "f1": 0.7510668563300142,
+      "roc_auc": 0.9349055050672331,
+      "train_seconds": 136.0
+    },
+    {
+      "epsilon": 500.0,
+      "accuracy": 0.9706666666666667,
+      "precision": 0.7703488372093024,
+      "recall": 0.7320441988950276,
+      "f1": 0.7507082152974505,
+      "roc_auc": 0.9356296755050085,
+      "train_seconds": 129.4
+    },
+    {
+      "epsilon": 2000.0,
+      "accuracy": 0.9703333333333334,
+      "precision": 0.7613636363636364,
+      "recall": 0.7403314917127072,
+      "f1": 0.7507002801120448,
+      "roc_auc": 0.9355233527817356,
+      "train_seconds": 151.2
+    },
+    {
+      "epsilon": null,
+      "accuracy": 0.9745,
+      "precision": 0.8494983277591973,
+      "recall": 0.7016574585635359,
+      "f1": 0.7685325264750378,
+      "roc_auc": 0.9383514392274992,
+      "train_seconds": 0.0
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+# Federated Fraud Detection - Experiment Configuration
+
+# Dataset Configuration
+dataset:
+  name: "paysim"  # Using PaySim (2.86M sequences, graph-enabled)
+  data_path: "../../datasets_capstone/preprocessed_datasets_final/paysim"
+  num_clients: 10
+  sequence_length: 10
+  num_features: 10
+
+# Model Architecture
+# hidden_dim=32 (was 128): a 4-layer/8-head, hidden_dim=128 transformer is
+# drastically over-parameterized for this 10-dim feature input. Verified
+# empirically (see docs/ARCHITECTURE.md "Model comparison") that at that
+# size the model converges to output a constant (the base fraud rate) for
+# every input during training - representation collapse, not a code bug.
+# Right-sizing to hidden_dim=32 + pos_weight + a prior-informed classifier
+# bias init (see src/models/temporal_graph_transformer.py) fixes it.
+model:
+  hidden_dim: 32
+
+  # Temporal Transformer
+  temporal:
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.1
+    activation: "gelu"
+
+  # Graph Encoder (HGAT)
+  graph:
+    num_layers: 2
+    num_heads: 8
+    dropout: 0.1
+
+  # Contrastive Learning
+  contrastive:
+    projection_dim: 32
+    temperature: 0.07
+    memory_bank_size: 10000
+
+  # Classification Head
+  classifier:
+    hidden_dim: 32
+    dropout: 0.2
+
+# Training Configuration
+training:
+  batch_size: 32
+  local_epochs: 5
+  learning_rate: 0.001
+  weight_decay: 0.00001
+
+  # Class imbalance handling (~6% fraud rate) - see model.hidden_dim note
+  # above for why this is necessary, not just tuning.
+  pos_weight: 8.0
+  fraud_rate_prior: 0.06
+
+  # Loss weights
+  loss_weights:
+    bce: 1.0
+    contrastive: 0.5
+    auxiliary: 0.3
+
+  # Gradient clipping
+  max_grad_norm: 1.0
+
+# Federated Learning Configuration
+federated:
+  strategy: "FedProx"
+  num_rounds: 20  # Start with 20 for quick demo
+  fraction_fit: 0.1  # 10% clients per round (1 out of 10)
+  min_fit_clients: 1
+  min_available_clients: 3
+  
+  # FedProx specific
+  proximal_mu: 0.1
+  
+  # Server config
+  server_address: "0.0.0.0:8080"
+
+# Differential Privacy
+privacy:
+  enabled: true
+  epsilon: 1.0
+  delta: 0.00001
+  clip_norm: 1.0
+
+# Evaluation
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "roc_auc"
+    - "pr_auc"
+  
+  # Decision threshold
+  fraud_threshold: 0.8
+  anomaly_threshold: 0.5
+
+# Logging
+logging:
+  log_dir: "./logs"
+  tensorboard: true
+  save_checkpoints: true
+  checkpoint_dir: "./checkpoints"
+  
+# Results
+results:
+  output_dir: "./results"
+  save_predictions: true
+  save_metrics: true

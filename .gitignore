@@ -1,0 +1,45 @@
+# Virtual environments
+venv_fl/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# macOS AppleDouble junk (shows up via OneDrive sync from a Mac)
+._*
+.DS_Store
+
+# Training artifacts / large outputs (but keep human-written results
+# summaries like TRAINING_RESULTS.md, and comparison.json - real measured
+# numbers worth tracking)
+results/*
+!results/*/
+results/*/*
+!results/*/*.md
+!results/comparison/comparison.json
+!results/comparison/epsilon_sweep.json
+logs/
+checkpoints/
+ray_tmp/
+*.pt
+*.pth
+
+# Datasets (not checked in — see README for expected path; generated
+# .pt tensors under data/ are already excluded by the *.pt rule above,
+# but small metadata like data/*/metadata/dataset_info.json stays tracked)
+datasets_capstone/
+*.csv
+
+# Streamlit - keep config.toml (project theme), ignore local secrets
+.streamlit/secrets.toml
+
+# Editor/OS
+.vscode/
+.idea/
+Thumbs.db

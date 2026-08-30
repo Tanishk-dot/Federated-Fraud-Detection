@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", "Inter", system-ui, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* validated categorical palette (dark-mode steps) - reserved for data
+     visualization and status semantics, not decoration */
+  --color-series-blue: #3987e5;
+  --color-series-orange: #d95926;
+  --color-series-aqua: #199e70;
+  --color-series-amber: #c98500;
+  --color-series-magenta: #d55181;
+  --color-series-green: #008300;
+  --color-series-violet: #9085e9;
+  --color-series-red: #e66767;
+
+  --color-status-good: #0ca30c;
+  --color-status-warning: #fab219;
+  --color-status-serious: #ec835a;
+  --color-status-critical: #d03b3b;
+
+  --color-surface-0: #0a0a0a;
+  --color-surface-1: #131313;
+  --color-surface-2: #171716;
+  --color-surface-3: #1e1e1c;
+  --color-ink-primary: #f5f4f0;
+  --color-ink-secondary: #b6b5aa;
+  --color-ink-muted: #7d7c74;
+  --color-border-hairline: rgba(255,255,255,0.08);
+
+  /* tighter radius scale than Tailwind's default - premium products read
+     as slightly sharper, not bubbly */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* one shared easing curve everywhere motion happens, so the whole app
+     moves with one signature instead of mismatched defaults */
+  --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-fade-up: fade-up 0.7s var(--ease-premium) both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-surface-0);
+  color: var(--color-ink-primary);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+::selection {
+  background: rgba(57,135,229,0.35);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* thin, calm scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 8px; }
+
+/* restrained focus ring - visible for keyboard users, invisible for mouse */
+:focus-visible {
+  outline: 1.5px solid var(--color-series-blue);
+  outline-offset: 2px;
+}
+
+/* ambient hero background drift (AmbientField) - slow, GPU-cheap, decorative */
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, 20px) scale(1.08); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-24px, 16px) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

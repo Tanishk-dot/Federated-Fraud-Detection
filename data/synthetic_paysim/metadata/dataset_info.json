@@ -1,0 +1,10 @@
+{
+  "name": "synthetic_paysim",
+  "note": "Rule-based synthetic data (v2: overlapping fraud/legit distributions + 12% 'quiet fraud' drawn from the legit distribution, so no feature-based model can reach 100% by construction). Real PaySim data unavailable. See docs/ARCHITECTURE.md.",
+  "num_clients": 10,
+  "samples_per_client": 4000,
+  "fraud_rate": 0.06,
+  "quiet_fraud_frac": 0.12,
+  "seq_len": 10,
+  "num_features": 10
+}
