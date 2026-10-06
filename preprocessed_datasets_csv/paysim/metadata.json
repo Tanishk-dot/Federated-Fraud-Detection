@@ -1,0 +1,11 @@
+{
+  "dataset_name": "paysim",
+  "num_transactions": 1908786,
+  "num_features": 10,
+  "window_size": 10,
+  "num_clients": 10,
+  "total_sequences": 2859513,
+  "fraud_rate_original": 0.0012756799347857749,
+  "preprocessing_date": "2026-03-20 01:08:39.177330",
+  "config_file": "configs/paysim.yaml"
+}

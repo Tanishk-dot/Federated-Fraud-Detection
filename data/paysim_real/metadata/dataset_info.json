@@ -1,0 +1,423 @@
+{
+  "name": "paysim_real",
+  "note": "Real PaySim transactions (preprocessed_datasets_csv/paysim/), re-split by this project. The delivered val/test CSVs were discarded: every client's val and test file was 100% fraud (zero legitimate sequences) - unusable for precision/ROC-AUC/confusion-matrix evaluation. A first fix attempt (pool train+val+test, re-split) was also rejected: it just redistributed the same corruption into a uniform ~30% fraud rate per client, far from real PaySim's ~0.13% - proof the val/test files are a separate inflated fraud pool, not misassigned legitimate rows. Final fix: rebuilt all three splits from each client's TRAIN CSV alone (0.06%-0.17% fraud for 9/10 clients - the right order of magnitude for real PaySim), via a fresh stratified 70/15/15 split. No rows were fabricated - every sequence here came from the original train CSVs; client_id boundaries are preserved.",
+  "known_anomaly": "client(s) ['client_9'] have an abnormally high fraud rate in their OWN train file ({'client_9': '46.89%'}) vs <0.2% for the rest - present in the original data, root cause unknown since configs/paysim.yaml (referenced by the source metadata.json) does not exist in this repo. NOT corrected here - reported as-is.",
+  "num_clients": 10,
+  "seq_len": 10,
+  "num_features": 10,
+  "val_frac": 0.15,
+  "test_frac": 0.15,
+  "seed": 42,
+  "per_client": {
+    "client_0": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 131,
+          "fraud_rate": 0.0006544600704418854
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 131,
+        "fraud_rate": 0.0006544600704418854
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 92,
+          "fraud_rate": 0.0006566035042643543
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 20,
+          "fraud_rate": 0.0006661115736885929
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 19,
+          "fraud_rate": 0.0006328059950041632
+        }
+      }
+    },
+    "client_1": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 345,
+          "fraud_rate": 0.001723578048110309
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 345,
+        "fraud_rate": 0.001723578048110309
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 241,
+          "fraud_rate": 0.0017200157013881453
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 52,
+          "fraud_rate": 0.0017318900915903415
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 52,
+          "fraud_rate": 0.0017318900915903415
+        }
+      }
+    },
+    "client_2": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 124,
+          "fraud_rate": 0.0006194889216396473
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 124,
+        "fraud_rate": 0.0006194889216396473
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 87,
+          "fraud_rate": 0.0006209185312065089
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 19,
+          "fraud_rate": 0.0006328059950041632
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 18,
+          "fraud_rate": 0.0005995004163197336
+        }
+      }
+    },
+    "client_3": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 103,
+          "fraud_rate": 0.0005145754752329328
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 103,
+        "fraud_rate": 0.0005145754752329328
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 72,
+          "fraud_rate": 0.000513863612032973
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 16,
+          "fraud_rate": 0.0005328892589508742
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 15,
+          "fraud_rate": 0.0004995836802664446
+        }
+      }
+    },
+    "client_4": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 173,
+          "fraud_rate": 0.0008642869632553144
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 173,
+        "fraud_rate": 0.0008642869632553144
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 121,
+          "fraud_rate": 0.0008635763479998572
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 26,
+          "fraud_rate": 0.0008659450457951707
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 26,
+          "fraud_rate": 0.0008659450457951707
+        }
+      }
+    },
+    "client_5": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 155,
+          "fraud_rate": 0.0007743611520495591
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 155,
+        "fraud_rate": 0.0007743611520495591
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 108,
+          "fraud_rate": 0.0007707954180494594
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 24,
+          "fraud_rate": 0.0007993338884263114
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 23,
+          "fraud_rate": 0.0007660283097418818
+        }
+      }
+    },
+    "client_6": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 84,
+          "fraud_rate": 0.00041965378562685787
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 84,
+        "fraud_rate": 0.00041965378562685787
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 59,
+          "fraud_rate": 0.000421082682082575
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 13,
+          "fraud_rate": 0.00043297252289758537
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 12,
+          "fraud_rate": 0.0003996669442131557
+        }
+      }
+    },
+    "client_7": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 139,
+          "fraud_rate": 0.0006944270976444434
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 139,
+        "fraud_rate": 0.0006944270976444434
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 97,
+          "fraud_rate": 0.0006922884773221997
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 21,
+          "fraud_rate": 0.0006994171523730224
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 21,
+          "fraud_rate": 0.0006994171523730224
+        }
+      }
+    },
+    "client_8": {
+      "original": {
+        "train": {
+          "n": 200165,
+          "fraud": 195,
+          "fraud_rate": 0.0009741962880623486
+        },
+        "val": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42892,
+          "fraud": 42892,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200165,
+        "fraud": 195,
+        "fraud_rate": 0.0009741962880623486
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140115,
+          "fraud": 136,
+          "fraud_rate": 0.0009706312671733933
+        },
+        "val": {
+          "n": 30025,
+          "fraud": 30,
+          "fraud_rate": 0.0009991673605328892
+        },
+        "test": {
+          "n": 30025,
+          "fraud": 29,
+          "fraud_rate": 0.0009658617818484596
+        }
+      }
+    },
+    "client_9": {
+      "original": {
+        "train": {
+          "n": 200174,
+          "fraud": 93868,
+          "fraud_rate": 0.4689320291346529
+        },
+        "val": {
+          "n": 42898,
+          "fraud": 42898,
+          "fraud_rate": 1.0
+        },
+        "test": {
+          "n": 42900,
+          "fraud": 42900,
+          "fraud_rate": 1.0
+        }
+      },
+      "train_only_pool": {
+        "n": 200174,
+        "fraud": 93868,
+        "fraud_rate": 0.4689320291346529
+      },
+      "rebuilt": {
+        "train": {
+          "n": 140121,
+          "fraud": 65707,
+          "fraud_rate": 0.4689304244188951
+        },
+        "val": {
+          "n": 30026,
+          "fraud": 14080,
+          "fraud_rate": 0.4689269299940052
+        },
+        "test": {
+          "n": 30027,
+          "fraud": 14081,
+          "fraud_rate": 0.468944616511806
+        }
+      }
+    }
+  }
+}

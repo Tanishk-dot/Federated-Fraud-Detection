@@ -32,6 +32,7 @@ show its evaluation is trustworthy isn't worth much regardless of its architectu
 
 - [What's actually implemented](#whats-actually-implemented)
 - [Real, measured results](#real-measured-results)
+- [Real PaySim results](#real-paysim-results)
 - [Quick start](#quick-start)
 - [The web app](#the-web-app)
 - [Project structure](#project-structure)
@@ -106,6 +107,57 @@ provable privacy guarantee.
 That's the shape a real privacy-utility tradeoff is supposed to have: a hard floor
 where the mechanism genuinely destroys the model, a transition region, and a plateau —
 not a flat line, which is what a broken (inert) DP implementation would look like.
+
+## Real PaySim results
+
+The tables above use synthetic data. Real PaySim data (`preprocessed_datasets_csv/`,
+1.9M real transactions, pre-windowed into 2.86M ten-step sequences across 10 clients)
+is also in this repo, but it needed a real fix before it was usable:
+
+**The data problem.** Every client's delivered `val`/`test` CSV was **100% fraud, zero
+legitimate transactions** — verified on the full files, not a sample. That makes
+precision, ROC-AUC, and a confusion matrix undefined on those splits. Pooling
+train+val+test and re-splitting (a fix that works for a simpler "misassigned rows" bug)
+was tried and rejected: it just redistributed the same corruption into a uniform ~30%
+fraud rate everywhere, nowhere near real PaySim's documented ~0.13% rate — proof the
+val/test files are a separate, inflated fraud pool bolted onto a clean `train` file, not
+misassigned legitimate rows. The actual fix
+(`experiments/build_real_paysim_splits.py`): rebuild all three splits from each client's
+own `train` CSV alone (0.04%–0.17% fraud for 9 of 10 clients — the right order of
+magnitude for real PaySim), via a fresh stratified 70/15/15 split. **Client 9 is a
+separate, unexplained anomaly** — its own train file alone is 46.9% fraud, ~1000x every
+other client — carried through as-is rather than silently corrected, since its root
+cause is unknown (`configs/paysim.yaml`, named in the dataset's own metadata as what
+built it, doesn't exist anywhere in this repo).
+
+**Results** (`python run_training.py --dataset paysim_real --rounds 15 --clients 10
+--exclude-clients 9 --pos-weight 8 --fraud-rate-prior 0.001 --max-samples 50000`, 9
+clients, client_9 excluded so the test set stays representative of the true ~0.1% rate):
+
+| Metric | Value |
+|---|---|
+| Accuracy | 99.71% |
+| Precision | 54.74% |
+| Recall | 48.15% |
+| F1 | 51.23% |
+| ROC-AUC | 89.32% |
+| PR-AUC | 49.10% |
+| FPR | 0.13% |
+
+Confusion matrix: TN=67,198, FP=86, FN=112, TP=104.
+
+This is meaningfully worse than the synthetic numbers above (F1 51% vs. 77%) — expected,
+not a failure: real PaySim's fraud rate is ~45x more imbalanced, and real fraud patterns
+are harder to separate than a rule-based generator's clean ones. A smaller/quicker sweep
+run (8 rounds, less data) actually scored *higher* on F1/recall (0.636/0.583) than this
+longer 15-round run (0.512/0.482) — reported honestly rather than cherry-picked, since
+more rounds and more data did not monotonically improve results here, most likely because
+each client has only ~100-300 real fraud sequences total, so round-to-round variance is
+high (per-client val F1 swung from 0.16 to 0.87 across rounds in the same run).
+
+Including client_9 scores much better (F1 78%) — but that's measuring against a test
+set client_9 made ~8% fraud instead of ~0.1%, i.e. an easier distribution, not a better
+model. Reported separately, not folded into the headline number above.
 
 ## Quick start
 
@@ -209,9 +261,12 @@ white-text-on-white on this dark theme, making 9 of 10 options invisible.
 
 ## Honest limitations
 
-- The original PaySim dataset isn't available in this environment; all results above
-  are on a schema-matched **synthetic** stand-in — a pipeline-correctness check, not a
-  real-world performance claim.
+- The 4-model comparison and epsilon-sweep tables above are on a schema-matched
+  **synthetic** stand-in (a pipeline-correctness check, not a real-world performance
+  claim). Real PaySim results now exist separately — see
+  [Real PaySim results](#real-paysim-results) — and score meaningfully lower, as
+  expected given real PaySim's much sharper ~0.13% fraud rate (vs. the synthetic set's
+  ~6%).
 - The 10 simulated clients currently draw from the **same** underlying distributions
   with independent random samples, not genuinely heterogeneous per-bank patterns — real
   non-IID heterogeneity (different fraud rates, spending patterns per institution) isn't

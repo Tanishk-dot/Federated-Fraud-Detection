@@ -526,6 +526,10 @@ def run_federated_training(args):
     # Config
     config = copy.deepcopy(DEFAULT_CONFIG)
     config['dataset']['num_features'] = num_features
+    if args.pos_weight is not None:
+        config['training']['pos_weight'] = args.pos_weight
+    if args.fraud_rate_prior is not None:
+        config['training']['fraud_rate_prior'] = args.fraud_rate_prior
     
     # Reduce model size for large feature counts (memory)
     if num_features > 100:
@@ -544,9 +548,14 @@ def run_federated_training(args):
     print(f"{'='*60}")
     
     num_clients = min(args.clients, 10)
+    excluded = {int(c) for c in args.exclude_clients.split(',') if c.strip() != ''}
+    if excluded:
+        print(f"Excluding clients: {sorted(excluded)}")
     client_data = {}
-    
+
     for client_id in range(num_clients):
+        if client_id in excluded:
+            continue
         try:
             client_data[client_id] = load_and_fix_client_data(
                 data_path, client_id, 
@@ -843,12 +852,26 @@ def main():
                        help='DP delta (failure probability)')
     parser.add_argument('--clip-norm', type=float, default=1.0,
                        help='DP clipping norm for the client update')
-    
+
+    # Model/loss hyperparameters that need re-tuning per dataset imbalance
+    # (DEFAULT_CONFIG's 8.0 / 0.06 were tuned for synthetic data's ~6% fraud
+    # rate; real PaySim is ~45x more imbalanced at ~0.13%)
+    parser.add_argument('--pos-weight', type=float, default=None,
+                       help='BCE positive-class weight (overrides DEFAULT_CONFIG; '
+                            'default 8.0 was tuned for synthetic ~6%% imbalance)')
+    parser.add_argument('--fraud-rate-prior', type=float, default=None,
+                       help='Prior fraud rate used for the classifier bias init '
+                            '(overrides DEFAULT_CONFIG; default 0.06 was tuned for '
+                            'synthetic ~6%% imbalance)')
+    parser.add_argument('--exclude-clients', type=str, default='',
+                       help='Comma-separated client ids to exclude entirely '
+                            '(e.g. "9" to drop the known paysim_real anomaly)')
+
     args = parser.parse_args()
-    
+
     np.random.seed(42)
     torch.manual_seed(42)
-    
+
     run_federated_training(args)
 
 

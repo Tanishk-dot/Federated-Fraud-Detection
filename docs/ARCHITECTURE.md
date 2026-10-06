@@ -281,14 +281,10 @@ natural next step once it is.
 
 ## Where the training data comes from
 
-The original PaySim data (`datasets_capstone/preprocessed_datasets_final/`,
-2.86M sequences) lived on an external drive during development and isn't
-present here. What's actually available:
-
-- `results/paysim/` — a checkpoint + `TRAINING_RESULTS.md` from a real past
-  run on the real data (76.6% accuracy, 95.3% ROC-AUC — the real numbers;
-  see [DASHBOARD_GUIDE.md](DASHBOARD_GUIDE.md) for where the "99.85%"
-  figures elsewhere in this repo actually came from).
+- `results/paysim/` — a checkpoint + `TRAINING_RESULTS.md` from an earlier real
+  run on real data (76.6% accuracy, 95.3% ROC-AUC — the real numbers; see
+  [DASHBOARD_GUIDE.md](DASHBOARD_GUIDE.md) for where the "99.85%" figures
+  elsewhere in this repo actually came from).
 - `experiments/generate_synthetic_paysim.py` — generates a **rule-based
   synthetic stand-in dataset** with the same schema, using the fraud/legit
   transaction archetypes from [TESTING_GUIDE.md](TESTING_GUIDE.md), via the
@@ -296,6 +292,23 @@ present here. What's actually available:
   and `results/synthetic_paysim_dp/` are real training runs on this data (not
   fabricated numbers) — useful as a pipeline-correctness check, not a claim
   about real-world performance.
+- `preprocessed_datasets_csv/paysim/` — real PaySim data (1.9M transactions,
+  2.86M pre-windowed sequences, 10 clients) added later. **It needed a fix
+  before use**: every client's delivered `val`/`test` CSV was 100% fraud with
+  zero legitimate transactions (verified on full files). Pooling train+val+test
+  and re-splitting was tried and rejected — it just produced a uniform ~30%
+  fraud rate everywhere, far from real PaySim's documented ~0.13%, proving
+  val/test were a separate inflated fraud pool, not misassigned legitimate
+  rows. `experiments/build_real_paysim_splits.py` rebuilds all three splits
+  from each client's `train` CSV alone (the only trustworthy file, at
+  0.04%–0.17% fraud for 9/10 clients) into `data/paysim_real/`. Client 9 is a
+  separate, unexplained anomaly (46.9% fraud in its own train file) carried
+  through as-is, not silently corrected — see the script's docstring and
+  `data/paysim_real/metadata/dataset_info.json`'s `known_anomaly` field.
+  Real results: see [README.md's "Real PaySim results"](../README.md#real-paysim-results)
+  (99.71% accuracy, 51.2% F1, 89.3% ROC-AUC on 9 clients, client_9 excluded for a
+  representative test set) — meaningfully worse than the synthetic numbers below,
+  as expected given real PaySim's much sharper imbalance.
 
 `src/data/feature_engineering.py` is the single source of truth for how a
 raw transaction becomes the model's 10-dim feature vector — both the
