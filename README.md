@@ -197,6 +197,36 @@ Including client_9 scores much better still (F1 78%) — but that's measuring ag
 set client_9 made ~8% fraud instead of ~0.1%, i.e. an easier distribution, not a better
 model. Reported separately, not folded into the headline number above.
 
+### Real PaySim model comparison
+
+The 4-model comparison in ["Real, measured results"](#real-measured-results) above is
+synthetic-only. Re-running it on real data (`experiments/run_model_comparison.py
+--dataset paysim_real --exclude-clients 9 --oversample-ratio 0.02`, 8 rounds, 20K
+samples/client) surfaces a real, structural finding, not just weaker numbers:
+
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| Centralized RandomForest | 99.9% | 76.3% | 33.0% | 46.1% | 96.7% |
+| Centralized Deep Model | 99.9% | 0% | 0% | 0% | 50.0% |
+| Federated (FedAvg, no DP) | 84.2% | 0.3% | 69.3% | 0.7% | 84.8% |
+| **Federated (FedProx+DP) — this project** | 99.8% | 18.6% | 51.2% | 27.3% | 85.3% |
+
+**Oversampling alone didn't fix every model.** A first attempt without it collapsed 3 of
+4 models outright (F1=0 for B, C, and D alike). Adding the same `--oversample-ratio 0.02`
+fix that worked for the main pipeline recovered a real, non-degenerate result for
+FedProx+DP — but **Centralized Deep Model stayed fully collapsed** (F1=0, ROC-AUC=0.5,
+literally random, even after 4 fresh-init retries), and **FedAvg without DP inverted
+into the opposite failure mode** — flagging 42,723 of 227,410 legitimate transactions as
+fraud (effective precision 0.3%), not learning a real boundary. Only FedProx+DP, the
+only one of the four with *both* a proximal term and DP noise as training-time
+regularization, produced a stable result. This is consistent with
+`run_centralized_deep`'s own docstring, which already noted it's "the only one of the
+four models with zero training-time regularization" - on real data's much sharper
+imbalance, oversampling fixes batch-level fraud starvation, but doesn't substitute for
+that missing regularization. Not a bug to chase further - a real property of this
+architecture under this data regime, reported honestly rather than re-run until it looks
+better.
+
 ## Quick start
 
 ```bash

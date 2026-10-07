@@ -42,13 +42,28 @@ def main():
     parser.add_argument("--mu", type=float, default=0.1)
     parser.add_argument("--epsilons", type=float, nargs="+",
                          default=[1.0, 5.0, 10.0, 20.0, 50.0, 100.0, 500.0, 2000.0])
+    parser.add_argument("--exclude-clients", type=str, default="",
+                       help='Comma-separated client ids to exclude entirely '
+                            '(e.g. "9" to drop the known paysim_real anomaly)')
+    parser.add_argument("--max-samples-per-client", type=int, default=None,
+                       help="Stratified cap on each client's TRAIN set, for runtime on "
+                            "datasets much larger than the synthetic set this was sized "
+                            "for. The shared test set is never capped.")
+    parser.add_argument("--oversample-ratio", type=float, default=None,
+                       help="Target per-batch fraud fraction (WeightedRandomSampler) - needed "
+                            "at real PaySim-scale imbalance, where a plain shuffled DataLoader "
+                            "collapses this architecture (verified). 0.02 is what "
+                            "run_training.py found works best for this data.")
     args = parser.parse_args()
 
     np.random.seed(42)
     torch.manual_seed(42)
 
+    exclude = [int(c) for c in args.exclude_clients.split(",") if c.strip()]
     data_dir = Path(args.data_path) / args.dataset
-    train, (test_X, test_y) = load_clients(data_dir)
+    train, (test_X, test_y) = load_clients(
+        data_dir, exclude_clients=exclude, max_samples_per_client=args.max_samples_per_client
+    )
     num_features = test_X.shape[-1]
     train_fraud_rate = float(np.mean([y.numpy().mean() for _, y in train.values()]))
     print(f"Loaded {len(train)} clients. Held-out test set: {len(test_X)} sequences "
@@ -80,6 +95,7 @@ def main():
             rounds=args.rounds, clients_per_round=args.clients_per_round,
             local_epochs=args.local_epochs, batch_size=args.batch_size,
             mu=args.mu, dp_epsilon=eps, label=f"eps={eps}",
+            oversample_ratio=args.oversample_ratio,
         )
         points.append({
             "epsilon": eps,
@@ -98,6 +114,7 @@ def main():
         rounds=args.rounds, clients_per_round=args.clients_per_round,
         local_epochs=args.local_epochs, batch_size=args.batch_size,
         mu=args.mu, dp_epsilon=None, label="no-DP",
+        oversample_ratio=args.oversample_ratio,
     )
     points.insert(0, {
         "epsilon": None, "accuracy": m["accuracy"], "precision": m["precision"],
@@ -111,6 +128,8 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     out = {
         "dataset": args.dataset,
+        "excluded_clients": exclude,
+        "oversample_ratio": args.oversample_ratio,
         "test_set_size": len(test_X),
         "test_fraud_rate": float(test_y.float().mean()),
         "methodology": (

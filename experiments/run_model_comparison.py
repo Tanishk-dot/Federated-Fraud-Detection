@@ -30,7 +30,7 @@ from sklearn.metrics import (
     accuracy_score, average_precision_score, f1_score, precision_score,
     recall_score, roc_auc_score,
 )
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -41,16 +41,60 @@ from run_training import (  # noqa: E402
 from src.models.temporal_graph_transformer import TemporalGraphTransformer  # noqa: E402
 
 
-def load_clients(data_dir: Path):
+def make_train_loader(X, y, batch_size, oversample_ratio=None):
+    """Same fraud-starvation fix as run_training.py's --oversample: at real
+    PaySim-scale imbalance (~0.1-0.3% fraud), a plain shuffled DataLoader
+    puts ~0 fraud examples in most batches, which collapses every deep
+    model in this comparison (centralized AND federated alike - verified:
+    without this, B/C/D all collapse to predicting "legitimate" for
+    everything on real data, while only A/RandomForest, which isn't
+    batch-trained, survives). WeightedRandomSampler fixes this at the
+    source by giving every batch a realistic mix of both classes,
+    independent of the dataset's true class ratio."""
+    if not oversample_ratio:
+        return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=True)
+    n_pos = int(y.sum().item())
+    n_neg = len(y) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=True)
+    weight_per_class = torch.tensor([(1.0 - oversample_ratio) / n_neg, oversample_ratio / n_pos])
+    sample_weights = weight_per_class[y.long()]
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(y), replacement=True)
+    return DataLoader(TensorDataset(X, y), batch_size=batch_size, sampler=sampler)
+
+
+def load_clients(data_dir: Path, exclude_clients=(), max_samples_per_client=None):
+    """exclude_clients drops known-anomalous clients entirely (e.g. paysim_real's
+    client_9 - see data/paysim_real/metadata/dataset_info.json's known_anomaly
+    field) - excluded from BOTH train and the shared test set, so the test set
+    stays representative of the real ~0.1% fraud rate rather than the ~47%
+    client_9 would otherwise pull it toward. max_samples_per_client stratifies
+    down each client's TRAIN set only (for runtime, on datasets far larger than
+    the synthetic set this was originally sized for) - the shared test set is
+    never subsampled, so the held-out evaluation stays exactly as representative
+    as the full rebuilt split."""
     client_dirs = sorted(
         int(d.name.split("_")[1]) for d in data_dir.iterdir()
         if d.is_dir() and d.name.startswith("client_") and (d / "train_temporal.pt").exists()
+        and int(d.name.split("_")[1]) not in set(exclude_clients)
     )
     train, test = {}, []
     for cid in client_dirs:
         tr = torch.load(data_dir / f"client_{cid}" / "train_temporal.pt", map_location="cpu", weights_only=False)
         te = torch.load(data_dir / f"client_{cid}" / "test_temporal.pt", map_location="cpu", weights_only=False)
-        train[cid] = (tr["sequences"], tr["labels"])
+        X, y = tr["sequences"], tr["labels"]
+        if max_samples_per_client is not None and len(X) > max_samples_per_client:
+            idx_pos = (y == 1).nonzero(as_tuple=True)[0]
+            idx_neg = (y == 0).nonzero(as_tuple=True)[0]
+            frac = max_samples_per_client / len(X)
+            n_pos = max(int(len(idx_pos) * frac), 1) if len(idx_pos) else 0
+            n_neg = max_samples_per_client - n_pos
+            sel_pos = idx_pos[torch.randperm(len(idx_pos))[:n_pos]]
+            sel_neg = idx_neg[torch.randperm(len(idx_neg))[:n_neg]]
+            sel = torch.cat([sel_pos, sel_neg])
+            sel = sel[torch.randperm(len(sel))]
+            X, y = X[sel], y[sel]
+        train[cid] = (X, y)
         test.append((te["sequences"], te["labels"]))
     test_X = torch.cat([t[0] for t in test])
     test_y = torch.cat([t[1] for t in test])
@@ -87,7 +131,8 @@ def run_random_forest(train, test_X, test_y):
     return metrics
 
 
-def run_centralized_deep(model_config, train, test_X, test_y, epochs=5, batch_size=64, lr=0.001, max_retries=4):
+def run_centralized_deep(model_config, train, test_X, test_y, epochs=5, batch_size=64, lr=0.001,
+                          max_retries=4, oversample_ratio=None):
     """
     Of the four models compared here, this is the only one with zero
     training-time regularization at all: no FedProx proximal term (that's
@@ -115,7 +160,7 @@ def run_centralized_deep(model_config, train, test_X, test_y, epochs=5, batch_si
     test_loader = DataLoader(TensorDataset(test_X, test_y), batch_size=128)
 
     for attempt in range(max_retries):
-        loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+        loader = make_train_loader(X_train, y_train, batch_size, oversample_ratio)
         model = TemporalGraphTransformer(model_config)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
@@ -181,7 +226,8 @@ def _is_collapsed(model, probe_X):
 
 
 def run_federated(model_config, train, test_X, test_y, *, rounds, clients_per_round,
-                   local_epochs, batch_size, mu, dp_epsilon, label, max_round_retries=3):
+                   local_epochs, batch_size, mu, dp_epsilon, label, max_round_retries=3,
+                   oversample_ratio=None):
     dp_desc = f"DP epsilon={dp_epsilon}" if dp_epsilon else "no DP"
     print(f"\n[{label}] Federated (mu={mu}, {dp_desc}, {rounds} rounds)...")
     t0 = time.time()
@@ -207,7 +253,7 @@ def run_federated(model_config, train, test_X, test_y, *, rounds, clients_per_ro
             client_models, client_sizes = [], []
             for cid in selected:
                 X, y = train[cid]
-                loader = DataLoader(TensorDataset(X, y), batch_size=batch_size, shuffle=True)
+                loader = make_train_loader(X, y, batch_size, oversample_ratio)
                 client_model = TemporalGraphTransformer(model_config)
                 client_model.load_state_dict(global_model.state_dict())
                 optimizer = torch.optim.Adam(client_model.parameters(), lr=0.001, weight_decay=1e-5)
@@ -257,13 +303,29 @@ def main():
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--epsilon", type=float, default=100.0)
     parser.add_argument("--centralized-epochs", type=int, default=5)
+    parser.add_argument("--exclude-clients", type=str, default="",
+                       help='Comma-separated client ids to exclude entirely '
+                            '(e.g. "9" to drop the known paysim_real anomaly)')
+    parser.add_argument("--max-samples-per-client", type=int, default=None,
+                       help="Stratified cap on each client's TRAIN set, for runtime on "
+                            "datasets much larger than the synthetic set this was sized "
+                            "for. The shared test set is never capped.")
+    parser.add_argument("--oversample-ratio", type=float, default=None,
+                       help="Target per-batch fraud fraction for models B/C/D (WeightedRandomSampler) "
+                            "- needed at real PaySim-scale imbalance (~0.1-0.3%% fraud), where a plain "
+                            "shuffled DataLoader puts ~0 fraud examples in most batches and collapses "
+                            "every deep model (verified). Does not apply to A/RandomForest, which isn't "
+                            "batch-trained. 0.02 is what run_training.py found works best for this data.")
     args = parser.parse_args()
 
     np.random.seed(42)
     torch.manual_seed(42)
 
+    exclude = [int(c) for c in args.exclude_clients.split(",") if c.strip()]
     data_dir = Path(args.data_path) / args.dataset
-    train, (test_X, test_y) = load_clients(data_dir)
+    train, (test_X, test_y) = load_clients(
+        data_dir, exclude_clients=exclude, max_samples_per_client=args.max_samples_per_client
+    )
     num_features = test_X.shape[-1]
     print(f"Loaded {len(train)} clients. Held-out test set: {len(test_X)} sequences "
           f"({int(test_y.sum())} fraud, {len(test_y) - int(test_y.sum())} legit) - "
@@ -315,7 +377,8 @@ def main():
         # rate is a legitimate, standard mitigation for training
         # instability, not a way of making this baseline look better.
         "metrics": run_centralized_deep(model_config, train, test_X, test_y, epochs=args.centralized_epochs,
-                                          batch_size=args.batch_size, lr=0.0003),
+                                          batch_size=args.batch_size, lr=0.0003,
+                                          oversample_ratio=args.oversample_ratio),
     }
 
     results["federated_fedavg"] = {
@@ -325,7 +388,8 @@ def main():
         "privacy": {"data_locality": True, "differential_privacy": False, "epsilon": None, "tier": "federated_only"},
         "metrics": run_federated(model_config, train, test_X, test_y, rounds=args.rounds,
                                    clients_per_round=args.clients_per_round, local_epochs=args.local_epochs,
-                                   batch_size=args.batch_size, mu=0.0, dp_epsilon=None, label="C"),
+                                   batch_size=args.batch_size, mu=0.0, dp_epsilon=None, label="C",
+                                   oversample_ratio=args.oversample_ratio),
     }
 
     results["federated_fedprox_dp"] = {
@@ -335,11 +399,14 @@ def main():
         "privacy": {"data_locality": True, "differential_privacy": True, "epsilon": args.epsilon, "tier": "federated_dp"},
         "metrics": run_federated(model_config, train, test_X, test_y, rounds=args.rounds,
                                    clients_per_round=args.clients_per_round, local_epochs=args.local_epochs,
+                                   oversample_ratio=args.oversample_ratio,
                                    batch_size=args.batch_size, mu=0.1, dp_epsilon=args.epsilon, label="D"),
     }
 
     out = {
         "dataset": args.dataset,
+        "excluded_clients": exclude,
+        "oversample_ratio": args.oversample_ratio,
         "test_set_size": len(test_X),
         "test_fraud_rate": float(test_y.float().mean()),
         "methodology": (

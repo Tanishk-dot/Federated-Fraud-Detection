@@ -450,6 +450,20 @@ every metric (FedProx's proximal term compensating for the DP noise). The
 honest claim this supports: privacy here costs close to nothing, not that
 this is the most accurate model on the leaderboard.
 
+**Same comparison, real PaySim data** (`--dataset paysim_real --exclude-clients 9
+--oversample-ratio 0.02`, 270,225-sequence test set, 0.08% fraud; see README.md's
+"Real PaySim model comparison" for the full table): a structurally different, more
+important finding than "lower numbers" - B (centralized deep) and C (FedAvg, no DP)
+both stayed degenerate even with the same oversampling fix that works for the main
+pipeline (B: F1=0, ROC-AUC=0.5, collapsed after 4 retries; C: inverted into flagging
+~19% of all legitimate transactions as fraud). Only D (FedProx+DP, this project's
+actual approach) produced a real result (F1=27.3%). At real PaySim's severe imbalance,
+oversampling fixes batch-level fraud starvation but doesn't substitute for FedProx's
+proximal term or DP's noise as training-time regularization - consistent with
+`run_centralized_deep`'s own docstring already describing B as "the only one of the
+four models with zero training-time regularization." This is reported as a real
+property of the architecture under this data regime, not re-run until it looks better.
+
 ### Why federated + DP, if it doesn't win on accuracy?
 
 No serious federated-learning / differential-privacy paper claims to beat a
