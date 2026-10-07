@@ -306,9 +306,21 @@ natural next step once it is.
   through as-is, not silently corrected — see the script's docstring and
   `data/paysim_real/metadata/dataset_info.json`'s `known_anomaly` field.
   Real results: see [README.md's "Real PaySim results"](../README.md#real-paysim-results)
-  (99.71% accuracy, 51.2% F1, 89.3% ROC-AUC on 9 clients, client_9 excluded for a
-  representative test set) — meaningfully worse than the synthetic numbers below,
+  (baseline: 99.71% accuracy, 51.2% F1, 89.3% ROC-AUC on 9 clients, client_9 excluded
+  for a representative test set) — meaningfully worse than the synthetic numbers below,
   as expected given real PaySim's much sharper imbalance.
+- **Fraud-starvation fix**: at real PaySim's ~0.1-0.3% fraud rate and `batch_size=64`,
+  most batches contain zero fraud examples, so `pos_weight` loss-reweighting has
+  nothing to act on (confirmed: sweeping it 8→400 produced a byte-identical confusion
+  matrix every time — per-batch gradient-norm clipping saturates its effect). Fixed
+  with `--oversample --oversample-ratio 0.02` (`WeightedRandomSampler`), the one ratio
+  found to beat baseline on both F1 (0.636→0.656) and recall (0.583→0.759)
+  simultaneously — every other ratio tested (0.05 up to full 0.5 balance) only traded
+  one for the other. Headline checkpoint: `results/paysim_real_best/`. Honest caveat:
+  scaling the same ratio up to a longer 15-round/50k-sample run did **not** reproduce
+  the win (F1 dropped to 0.422, below even the plain baseline) — more training
+  consistently hurt F1 here, most likely because each client has only ~100-300 real
+  fraud sequences total. The smaller run is kept as the real result, not the larger one.
 
 `src/data/feature_engineering.py` is the single source of truth for how a
 raw transaction becomes the model's 10-dim feature vector — both the

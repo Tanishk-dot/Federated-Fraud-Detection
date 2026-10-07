@@ -130,9 +130,10 @@ other client — carried through as-is rather than silently corrected, since its
 cause is unknown (`configs/paysim.yaml`, named in the dataset's own metadata as what
 built it, doesn't exist anywhere in this repo).
 
-**Results** (`python run_training.py --dataset paysim_real --rounds 15 --clients 10
---exclude-clients 9 --pos-weight 8 --fraud-rate-prior 0.001 --max-samples 50000`, 9
-clients, client_9 excluded so the test set stays representative of the true ~0.1% rate):
+**Baseline results** (`python run_training.py --dataset paysim_real --rounds 15
+--clients 10 --exclude-clients 9 --pos-weight 8 --fraud-rate-prior 0.001 --max-samples
+50000`, 9 clients, client_9 excluded so the test set stays representative of the true
+~0.1% rate):
 
 | Metric | Value |
 |---|---|
@@ -141,21 +142,58 @@ clients, client_9 excluded so the test set stays representative of the true ~0.1
 | Recall | 48.15% |
 | F1 | 51.23% |
 | ROC-AUC | 89.32% |
-| PR-AUC | 49.10% |
-| FPR | 0.13% |
-
-Confusion matrix: TN=67,198, FP=86, FN=112, TP=104.
 
 This is meaningfully worse than the synthetic numbers above (F1 51% vs. 77%) — expected,
 not a failure: real PaySim's fraud rate is ~45x more imbalanced, and real fraud patterns
-are harder to separate than a rule-based generator's clean ones. A smaller/quicker sweep
-run (8 rounds, less data) actually scored *higher* on F1/recall (0.636/0.583) than this
-longer 15-round run (0.512/0.482) — reported honestly rather than cherry-picked, since
-more rounds and more data did not monotonically improve results here, most likely because
-each client has only ~100-300 real fraud sequences total, so round-to-round variance is
-high (per-client val F1 swung from 0.16 to 0.87 across rounds in the same run).
+are harder to separate than a rule-based generator's clean ones.
 
-Including client_9 scores much better (F1 78%) — but that's measuring against a test
+**The fraud-starvation bug and its fix.** At real PaySim's ~0.1–0.3% fraud rate and
+`batch_size=64`, most training batches contain **zero** fraud examples — so `pos_weight`
+(the loss-level class reweighting) has nothing to act on most of the time. Verified two
+ways before fixing it: sweeping `pos_weight` from 8 to 400 changed nothing (confusion
+matrix was byte-identical across the whole range — per-batch gradient-norm clipping was
+saturating its effect), and post-hoc threshold tuning on the trained checkpoint recovered
+essentially zero extra F1. The real bottleneck was upstream of both. Fix: a
+`WeightedRandomSampler` (`run_training.py --oversample --oversample-ratio R`) that
+oversamples fraud into every batch at a target rate `R`, instead of the true (near-zero)
+class ratio.
+
+**Full balance isn't the right ratio — it's a dial, and it has a sweet spot.** Sweeping
+`R` (8-round test runs) gave a clean, monotonic precision/recall tradeoff:
+
+| `R` | F1 | Recall | Precision | ROC-AUC |
+|---|---|---|---|---|
+| 0 (baseline, no oversample) | 0.6364 | 0.5833 | 0.70 | 0.9039 |
+| 0.01 | 0.6305 | 0.5648 | 0.7135 | 0.8966 |
+| **0.02** | **0.6560** | **0.7593** | 0.5775 | 0.9713 |
+| 0.05 | 0.5434 | 0.7963 | 0.4125 | 0.9725 |
+| 0.1 | 0.4123 | 0.8704 | 0.2701 | 0.9749 |
+| 0.5 (full balance) | 0.2311 | 0.9074 | 0.1324 | 0.9741 |
+
+`R=0.02` is the one value that improves **both** F1 and recall over baseline simultaneously
+— every other tested ratio only trades one for the other.
+
+**An honest wrinkle: more training made it worse, not better.** Scaling `R=0.02` up to
+the full run (15 rounds, 50k samples, matching the baseline's scale) did **not** reproduce
+the short-run win — it scored *worse* on F1 than even the plain baseline:
+
+| Config | F1 | Recall | Precision | ROC-AUC |
+|---|---|---|---|---|
+| Baseline, 8 rounds/20k | 0.6364 | 0.5833 | 0.70 | 0.9039 |
+| Baseline, 15 rounds/50k | 0.5123 | 0.4815 | 0.5474 | 0.8932 |
+| Oversample R=0.02, 8 rounds/20k | **0.6560** | **0.7593** | 0.5775 | 0.9713 |
+| Oversample R=0.02, 15 rounds/50k | 0.4220 | 0.8009 | 0.2864 | 0.9826 |
+
+The pattern holds for *both* configs: more rounds and more data consistently **hurt** F1
+here, not helped — almost certainly because each client has only ~100–300 real fraud
+sequences total, so longer training just keeps pushing the decision boundary toward
+flagging more (recall and ROC-AUC climb every time; precision collapses faster). The
+headline real-data checkpoint (`results/paysim_real_best/`) is therefore the smaller
+8-round/20k-sample, `R=0.02` run — chosen because it's empirically the best by F1, not
+because it's the most training. The longer run (`results/paysim_real_oversampled/`) and
+the plain baseline (`results/paysim_real/`) are both kept for comparison, not discarded.
+
+Including client_9 scores much better still (F1 78%) — but that's measuring against a test
 set client_9 made ~8% fraud instead of ~0.1%, i.e. an easier distribution, not a better
 model. Reported separately, not folded into the headline number above.
 

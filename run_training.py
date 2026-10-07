@@ -32,7 +32,7 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, average_precision_score
 )
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -674,10 +674,47 @@ def run_federated_training(args):
             # Prepare data loader
             train_X, train_y = client_data[cid]['train']
             train_dataset = TensorDataset(train_X, train_y)
-            train_loader = DataLoader(
-                train_dataset, batch_size=args.batch_size,
-                shuffle=True, drop_last=False
-            )
+
+            # At real PaySim's ~0.1-0.3% fraud rate, batch_size=64 random
+            # sampling gives ~0.1 fraud examples/batch on average - most
+            # batches contain literally zero positives, so pos_weight has
+            # nothing to act on most of the time (verified: tuning pos_weight
+            # 8->400 changed nothing, and post-hoc threshold tuning on the
+            # trained checkpoint recovered ~0 extra F1, so the bottleneck is
+            # upstream of both the loss weighting and the decision threshold).
+            # WeightedRandomSampler fixes this at the source: sample with
+            # replacement so every batch has a realistic mix of both classes,
+            # independent of the true class ratio.
+            if args.oversample:
+                n_pos = int(train_y.sum().item())
+                n_neg = len(train_y) - n_pos
+                if n_pos > 0 and n_neg > 0:
+                    # target_pos_frac controls how aggressively we oversample:
+                    # 0.5 = full balance (recall up a lot, precision collapses -
+                    # verified empirically: recall 0.58->0.91, precision
+                    # 0.70->0.13, F1 down overall). A smaller target fraction
+                    # is a tunable middle ground between the two failure modes.
+                    target_pos_frac = args.oversample_ratio
+                    weight_per_class = torch.tensor([
+                        (1.0 - target_pos_frac) / n_neg,
+                        target_pos_frac / n_pos,
+                    ])
+                    sample_weights = weight_per_class[train_y.long()]
+                    sampler = WeightedRandomSampler(
+                        sample_weights, num_samples=len(train_y), replacement=True
+                    )
+                    train_loader = DataLoader(
+                        train_dataset, batch_size=args.batch_size, sampler=sampler
+                    )
+                else:
+                    train_loader = DataLoader(
+                        train_dataset, batch_size=args.batch_size, shuffle=True
+                    )
+            else:
+                train_loader = DataLoader(
+                    train_dataset, batch_size=args.batch_size,
+                    shuffle=True, drop_last=False
+                )
 
             # Optimizer
             optimizer = torch.optim.Adam(
@@ -866,6 +903,17 @@ def main():
     parser.add_argument('--exclude-clients', type=str, default='',
                        help='Comma-separated client ids to exclude entirely '
                             '(e.g. "9" to drop the known paysim_real anomaly)')
+    parser.add_argument('--oversample', action='store_true',
+                       help='Use WeightedRandomSampler so every local batch has a '
+                            'realistic mix of both classes, instead of the true '
+                            '(possibly near-zero-fraud-per-batch) class ratio - '
+                            'needed at real PaySim-scale imbalance, where '
+                            'pos_weight alone has nothing to act on in most batches')
+    parser.add_argument('--oversample-ratio', type=float, default=0.5,
+                       help='Target fraction of positive (fraud) examples per '
+                            'sampled batch when --oversample is set. 0.5 = full '
+                            'balance (maximizes recall, verified to collapse '
+                            'precision); lower values are a tunable middle ground')
 
     args = parser.parse_args()
 
