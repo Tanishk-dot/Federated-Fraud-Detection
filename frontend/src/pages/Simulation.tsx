@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
+import { Link } from "react-router-dom"
 import { api, type SimEvent, type SimJobStatus } from "../api"
 import { Badge, Button, Card, SectionTitle } from "../components/ui"
 import { EASE, Reveal } from "../components/motion"
@@ -274,8 +275,25 @@ export default function Simulation() {
           </Badge>
         )}
         {dpInfo && <Badge status="good">DP: ε={dpInfo.epsilon}, δ={dpInfo.delta}</Badge>}
+        <Badge status="neutral">HE / Secure Agg: not run live — see why below</Badge>
         {playbackDone && backendStatus === "complete" && <Badge status="good">✅ complete</Badge>}
         {backendError && <Badge status="critical">error: {backendError}</Badge>}
+      </Reveal>
+
+      <Reveal className="mb-8 -mt-2">
+        <p className="text-xs text-ink-muted max-w-3xl">
+          This live demo exercises real FedProx + client-level DP-FedAvg only.
+          Homomorphic Encryption and Secure Aggregation are both real and wired
+          into training (<code>run_training.py --he</code> /{" "}
+          <code>--secure-agg</code>, see{" "}
+          <Link to="/architecture" className="underline hover:text-ink-secondary">
+            Architecture &amp; Privacy
+          </Link>
+          ) — but HE's real measured cost (~31–56s to encrypt + ~34–41s to
+          decrypt, <em>per client, per round</em>) would turn this ~20-second
+          interactive demo into an 8+ minute wait, so it's left out of the
+          live animation on purpose rather than silently skipped.
+        </p>
       </Reveal>
 
       <Card className="mb-8">
