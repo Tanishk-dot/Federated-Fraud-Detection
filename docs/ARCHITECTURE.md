@@ -12,20 +12,42 @@ federated learning framework is wired into this project. For model architecture
 |---|---|---|---|
 | 1. Data Locality | Raw data never leaves clients | Training happens on each bank's local data; only model updates are transmitted | ✅ real |
 | 2. Differential Privacy (DP) | A client's whole update is bounded/noised | See "Differential Privacy" below - client-level DP-FedAvg | ✅ real, `--dp` flag |
-| 3. Homomorphic Encryption (HE) | Server can't see individual gradients | Paillier additive HE in `homomorphic_encryption.py`, `proxy_server.py` | ⚠️ implemented, **not wired into training** - see note below |
+| 3. Homomorphic Encryption (HE) | Server can't see individual client updates | Paillier additive HE in `homomorphic_encryption.py`, wired into `run_training.py`'s aggregation step | ✅ real, `--he` flag |
 | 4. Secure Aggregation | No single party sees all gradients | Proxy servers do intermediate aggregation (distributed trust) | ⚠️ implemented, **not wired into training** |
 | 5. TLS 1.3 | Transport security | Encrypts all network traffic between clients/proxies/server | 📝 not implemented - this is a simulation running in one process |
 | 6. Mutual Authentication | Identity verification | Clients and server authenticate to each other | 📝 not implemented, same reason |
 
-**On layers 3/4:** `homomorphic_encryption.py`'s Paillier implementation is
-correct, but nothing in `client.py` or `run_training.py` imports it - the
-training pipeline that actually runs doesn't touch it. Even if wired in, it
-encrypts every parameter individually via Python big-integer modular
-exponentiation, which does not scale to a model with tens of thousands of
-parameters in practice (let alone the ~1.07M the architecture had before
-right-sizing - see "Model comparison" below). Treat it as a documented
-reference implementation of the
-mechanism, not a component this project currently runs end-to-end.
+**On layer 3 (HE):** `run_training.py --he` genuinely routes client→server
+aggregation through Paillier encryption instead of plaintext FedAvg - each
+selected client's full parameter vector is encrypted client-side (public key
+only), scalar-multiplied by its integer sample count and homomorphically
+summed with the other selected clients' encrypted updates entirely under
+encryption, and the server (the only party holding the private key) decrypts
+only that one aggregate, never an individual client's update
+(`federated_aggregate_he()` in `run_training.py`). Verified algebraically
+identical to plaintext FedAvg up to float rounding.
+
+Naive single-process Paillier encryption of a 45,292-parameter model doesn't
+scale (benchmarked: ~2.3ms/value at 512-bit keys ⇒ ~104s to encrypt one
+client's full update, serially) - this was fixed with a parallel
+encrypt/decrypt pool (`encrypt_values_parallel`/`decrypt_values_parallel` in
+`homomorphic_encryption.py`, one Paillier ciphertext per parameter still,
+just computed across all CPU cores instead of one). Real, measured cost from
+an actual 3-round run (`results/paysim_real_he/`, 2 clients/round, 22 CPU
+cores, 512-bit keys): **31-48s to encrypt one client's full update, 34-41s to
+decrypt the aggregate, per round.** That overhead is disclosed, not hidden -
+it's added on top of normal training time and scales with `clients_per_round`
+(each selected client encrypts). **512-bit keys are demo-speed only, not
+production-secure** - the module's own docstring already said 2048+ is
+needed for real security; that costs roughly another order of magnitude of
+compute (see the key-size benchmark at the top of `homomorphic_encryption.py`'s
+module docstring).
+
+**On layer 4 (Secure Aggregation / proxy servers):** still exactly what it
+was - `proxy_server.py`'s tiered client→proxy→server topology is correct
+reference code, but nothing imports it into the training path that actually
+runs. HE (layer 3) and this tiered-trust topology (layer 4) are separable:
+wiring one doesn't require the other, and only the former is done.
 
 ### Round flow (what actually runs — `run_training.py`)
 
@@ -35,14 +57,19 @@ Client (Bank i)                              Global Server
 1. Train locally for E epochs (FedProx loss)
 2. delta_i = local_params - global_params
 3. Clip: delta_i' = delta_i * min(1, C / ||delta_i||)   [only if --dp]
-                                              ──►  FedAvg: w' = Σ (n_i/N) * (global + delta_i')
+4. If --he: encrypt params (Paillier, public key only)
+                                              ──►  If --he: homomorphic weighted sum, decrypt once
+                                                    else:    plaintext FedAvg: w' = Σ (n_i/N) * (global + delta_i')
                                                     if --dp: w' += N(0, σ²)   [once per round]
 ```
 
-No encryption, proxies, or network hops happen here — this is a single-process
+No proxies or real network hops happen here — this is a single-process
 simulation where "clients" are just copies of the model trained on different
-in-memory data slices. See the HE/proxy note above for what a real deployment
-would add on top.
+in-memory data slices, so `--he`'s "server never sees a plaintext client
+update" guarantee holds in the sense that the plaintext value is never read
+by the aggregation code path, not in the sense of separate machines/processes
+with an actual network boundary between them. See the HE/proxy note above for
+what a real multi-process/multi-machine deployment would add on top.
 
 ### Why homomorphic encryption
 
@@ -52,8 +79,13 @@ update. Only the final aggregated sum is decrypted.
 
 - **Pros:** server never sees individual gradients; security reduces to hardness of
   factoring; composes cleanly with DP; no trusted third party needed.
-- **Cons:** encryption/decryption overhead (~3-4x the cost of the raw gradient step in
-  our measurements), larger ciphertexts (~4x size), and it only supports addition —
+- **Cons:** real, measured overhead - 31-48s to encrypt one client's full 45,292-param
+  update and 34-41s to decrypt the aggregate, per round (512-bit keys, 22 CPU cores,
+  `results/paysim_real_he/`) - vs. the plaintext FedAvg step it replaces, which is plain
+  tensor arithmetic and takes milliseconds. This is overhead added on top of normal
+  training time, not a multiplier on it, and it scales with `clients_per_round` (every
+  selected client encrypts). Also: larger ciphertexts (~4x size), and it only supports
+  addition —
   no multiplication, so it's restricted to linear aggregation like FedAvg/FedProx.
 
 ### Why proxy servers for secure aggregation

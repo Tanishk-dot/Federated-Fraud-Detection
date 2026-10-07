@@ -7,6 +7,80 @@ import torch
 import numpy as np
 from typing import Tuple, List
 import random
+import multiprocessing as mp
+import os
+
+
+# Module-level (not bound methods), with the key set ONCE per worker via a
+# Pool initializer rather than re-pickled on every task - both because a
+# bound method pickles the whole PaillierEncryption instance (private key
+# included) even for encrypt-only work, and because repickling the same
+# ~500-2048 bit key dict per value was a real source of the Windows
+# BrokenProcessPool failures seen during development. Worker processes
+# only ever receive the key they actually need: _encrypt_init gets the
+# PUBLIC key only (clients never need the private key to encrypt), matching
+# the real threat model.
+
+_worker_key = None
+
+
+def _encrypt_init(public_key: dict):
+    global _worker_key
+    _worker_key = public_key
+
+
+def _decrypt_init(private_key: dict):
+    global _worker_key
+    _worker_key = private_key
+
+
+def _gcd_fn(a: int, b: int) -> int:
+    while b:
+        a, b = b, a % b
+    return a
+
+
+def _encrypt_value_worker(plaintext: float) -> int:
+    n, g = _worker_key['n'], _worker_key['g']
+    n_sq = n * n
+    m = int(plaintext * 1000000)
+    r = random.randint(1, n - 1)
+    while _gcd_fn(r, n) != 1:
+        r = random.randint(1, n - 1)
+    return (pow(g, m, n_sq) * pow(r, n, n_sq)) % n_sq
+
+
+def _decrypt_value_worker(ciphertext: int) -> float:
+    n, lambda_val, mu = _worker_key['n'], _worker_key['lambda'], _worker_key['mu']
+    n_sq = n * n
+    c_lambda = pow(ciphertext, lambda_val, n_sq)
+    l_val = (c_lambda - 1) // n
+    m = (l_val * mu) % n
+    if m > n // 2:
+        m = m - n
+    return m / 1000000.0
+
+
+def encrypt_values_parallel(values: List[float], public_key: dict, n_workers: int = None) -> List[int]:
+    """Encrypt a flat list of floats in parallel - the 45K+ independent
+    modular-exponentiation calls needed for one model update are
+    embarrassingly parallel, and naive single-process Paillier encryption
+    of a full update is too slow for a live multi-round training loop
+    (benchmarked: ~2.3ms/value at 512-bit keys, ~104s for a 45K-param
+    model single-process). This doesn't change the crypto - every value is
+    still a real, independent Paillier ciphertext - only how fast all of
+    them get computed."""
+    n_workers = n_workers or os.cpu_count() or 4
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=n_workers, initializer=_encrypt_init, initargs=(public_key,)) as pool:
+        return pool.map(_encrypt_value_worker, values, chunksize=64)
+
+
+def decrypt_values_parallel(ciphertexts: List[int], private_key: dict, n_workers: int = None) -> List[float]:
+    n_workers = n_workers or os.cpu_count() or 4
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=n_workers, initializer=_decrypt_init, initargs=(private_key,)) as pool:
+        return pool.map(_decrypt_value_worker, ciphertexts, chunksize=64)
 
 
 class PaillierEncryption:
