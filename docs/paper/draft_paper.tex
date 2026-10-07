@@ -179,21 +179,64 @@ of Chen et al.~\cite{chen2020simclr}, adapted here to encourage
 separation between fraud and legitimate transaction embeddings rather
 than between augmented views of the same image.
 
-\textbf{Federated fraud detection systems in the literature.} A body of
-recent work applies FL to financial fraud and financial-crime detection
-under a range of architectures and privacy mechanisms -- hybrid
-horizontal/vertical FL over split account/transaction features,
-federated graph learning for anti-money-laundering, FL combined with
-explainable-AI layers (SHAP/LIME), homomorphic-encryption-secured
-gradient aggregation, and FL combined with generative oversampling
-(WGAN/VAE) for extreme class imbalance. An earlier draft of this paper
-included a table of reported metrics from several such systems for
-context; we removed it because those figures could not be traced to
-resolvable, citable sources at the time of writing, and an uncited
-numeric comparison is not defensible in a submitted paper.
-Table~\ref{tab:comparison} and Table~\ref{tab:comparison-real} restrict
-this paper's quantitative claims to results we produced ourselves under
-a controlled, single-test-set protocol.
+\textbf{Federated fraud detection systems in the literature.} A growing
+body of work applies FL specifically to financial fraud and
+financial-crime detection, under a range of architectures and privacy
+mechanisms. Zhang et al.~\cite{zhang2023hyfl} address the case where
+transaction-level and account-level features are held by different
+institutions, combining horizontal and vertical FL into a hybrid
+framework (HyFL) evaluated on a real $\approx$3M-transaction SWIFT
+dataset at 1:783 imbalance; Suzumura et al.~\cite{suzumura2019fedgraph}
+instead federate \emph{graph} features across institutions for
+anti-money-laundering, reporting a $\approx$20\% accuracy improvement
+over isolated local models on the UK FCA TechSprint dataset --
+motivating evidence for exactly the kind of cross-institution graph
+signal our own graph branch is intended for, though not yet wired to
+real entity-linked edges (Section~\ref{sec:limitations}). Sun's
+comparative study~\cite{sun2025fedsurvey} benchmarks ANN, Random
+Forest, and CNN clients under FL specifically for fraud, finding RF
+more robust to non-IID data but communication-heavier -- a tradeoff our
+own choice of FedProx (Section~III-B) is one answer to without changing
+the base architecture per client.
+
+A second cluster addresses the transparency gap FL alone doesn't close.
+Awosika et al.~\cite{awosika2024xaifl} and Aljunaid et
+al.~\cite{aljunaid2025xfl} both pair FL with post-hoc explainability
+(SHAP/LIME) so that a federated model's decisions remain auditable to
+analysts despite no institution seeing another's raw data -- a concern
+this paper does not address directly (our contrastive head targets
+novel-pattern separation, not instance-level explanation) but flag as
+complementary future work. Kanamori et al.~\cite{kanamori2022deepprotect}
+report one of the few real-world FL deployments in this space:
+DeepProtect, piloted across five live Japanese banks using additive
+homomorphic encryption for gradient aggregation, detecting fraudulent
+accounts weeks before manual bank processes did -- a real-world existence
+proof for exactly the HE-secured aggregation path this paper wires into
+training in Section~\ref{sec:he}, at smaller (simulated, ten-client)
+scale. Zheng~\cite{zheng2025wgandp} tackles class imbalance directly
+inside the privacy layer, combining adaptive differential privacy with
+WGAN-based synthetic minority generation; our own imbalance fix
+(Section~\ref{sec:realdata}) instead oversamples real examples rather
+than generating synthetic ones, a simpler but real-data-only
+alternative. Tang and Liu~\cite{tang2024sdt} and Abbassi et
+al.~\cite{abbassi2025vaeqlstm} both federate sequence architectures
+(a Transformer-based Structured Data Transformer, and a VAE-QLSTM
+fusion respectively) for transaction-level fraud, supporting this
+paper's own choice of a temporal Transformer branch (Section~III-A) as
+a reasonable federated sequence model for this task. Finally, Han
+Zheng~\cite{hzheng2025fedgat} compares FedGAT-DCNN, FedAvg+CNN, and a
+data-quality-weighted FedAvg-DWA+RF, finding the graph-attention variant
+strongest on imbalanced data -- further, independent support (beyond
+Suzumura et al.) for graph-structured federated fraud models, which our
+own graph branch approximates only partially today.
+
+None of the above systems' reported metrics are reused as numeric
+comparison points in Table~\ref{tab:comparison} or
+Table~\ref{tab:comparison-real}: every number in those tables comes from
+a model we trained ourselves under one controlled, single-test-set
+protocol, since cross-paper metric comparisons across different
+datasets, splits, and imbalance ratios are not a defensible apples-to-
+apples claim regardless of how well each individual source is cited.
 
 \section{System Architecture}
 
@@ -714,9 +757,10 @@ both strong evidence the reference code had never previously been run
 end-to-end on this platform, consistent with it having been
 disconnected from training until this work.
 
-\section{Limitations}
+\subsection{Assumptions}
 \label{sec:limitations}
-We report these plainly rather than rounding up. All synthetic-data
+The results above rest on a set of assumptions and scope boundaries,
+reported here plainly rather than rounded up. All synthetic-data
 numbers remain a pipeline-correctness check, not a real-world
 performance claim; Section~\ref{sec:realdata-results} shows the
 real-data numbers are meaningfully lower, as expected given real
@@ -787,6 +831,16 @@ PES University.
 \bibitem{lopezrojas2016paysim} E. A. Lopez-Rojas, A. Elmir, and S. Ahmed, ``PaySim: A Financial Mobile Money Simulator for Fraud Detection,'' in \textit{Proc. 28th European Modeling and Simulation Symposium (EMSS)}, 2016.
 \bibitem{vaswani2017attention} A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, ``Attention Is All You Need,'' in \textit{Proc. Advances in Neural Information Processing Systems (NeurIPS)}, 2017.
 \bibitem{chen2020simclr} T. Chen, S. Kornblith, M. Norouzi, and G. Hinton, ``A Simple Framework for Contrastive Learning of Visual Representations,'' in \textit{Proc. Int. Conf. Machine Learning (ICML)}, 2020.
+\bibitem{zhang2023hyfl} H. Zhang, J. Hong, F. Dong, S. Drew, L. Xue, and J. Zhou, ``A Privacy-Preserving Hybrid Federated Learning Framework for Financial Crime Detection,'' \textit{arXiv preprint arXiv:2302.03654}, 2023.
+\bibitem{suzumura2019fedgraph} T. Suzumura, Y. Zhou, N. Baracaldo, G. Ye, K. Houck, R. Kawahara, A. Anwar, L. L. Stavarache, Y. Watanabe, P. Loyola, D. Klyashtorny, H. Ludwig, and K. Bhaskaran, ``Towards Federated Graph Learning for Collaborative Financial Crimes Detection,'' \textit{arXiv preprint arXiv:1909.12946}, 2019.
+\bibitem{sun2025fedsurvey} R. Sun, ``A Comprehensive Investigation of Fraud Detection Behavior in Federated Learning,'' \textit{ITM Web of Conferences}, vol. 70, 2025.
+\bibitem{awosika2024xaifl} T. Awosika, R. M. Shukla, and B. Pranggono, ``Transparency and Privacy: The Role of Explainable AI and Federated Learning in Financial Fraud Detection,'' \textit{IEEE Access}, 2024.
+\bibitem{aljunaid2025xfl} S. K. Aljunaid, S. J. Almheiri, H. Dawood, and M. A. Khan, ``Secure and Transparent Banking: Explainable AI-Driven Federated Learning Model for Financial Fraud Detection,'' \textit{Journal of Risk and Financial Management}, vol. 18, no. 4, p. 179, 2025.
+\bibitem{kanamori2022deepprotect} S. Kanamori, T. Abe, T. Ito, K. Emura, L. Wang, S. Yamamoto, L. T. Phong, K. Abe, S. Kim, R. Nojima, S. Ozawa, and S. Moriai, ``Privacy-Preserving Federated Learning for Detecting Fraudulent Financial Transactions in Japanese Banks,'' \textit{Journal of Information Processing}, vol. 30, 2022.
+\bibitem{zheng2025wgandp} Y. Zheng, ``Bank Data Protection and Fraud Identification Based on Improved Adaptive Federated Learning and WGAN,'' \textit{Scientific Reports}, 2025.
+\bibitem{tang2024sdt} Y. Tang and Z. Liu, ``A Credit Card Fraud Detection Algorithm Based on SDT and Federated Learning,'' \textit{IEEE Access}, 2024.
+\bibitem{abbassi2025vaeqlstm} H. Abbassi, S. El Mendili, and Y. Gahi, ``Adaptive, Privacy-Enhanced Real-Time Fraud Detection in Banking Networks Through Federated Learning and VAE-QLSTM Fusion,'' \textit{Big Data and Cognitive Computing}, vol. 9, no. 7, p. 185, 2025.
+\bibitem{hzheng2025fedgat} H. Zheng, ``Federated Learning-Based Credit Card Fraud Detection: A Comparative Analysis of Advanced Machine Learning Models,'' \textit{ITM Web of Conferences}, 2025.
 \end{thebibliography}
 
 \end{document}
