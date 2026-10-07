@@ -4,17 +4,19 @@
 %
 % Describes the SYSTEM AS ACTUALLY IMPLEMENTED AND MEASURED in this repository
 % (see README.md, docs/ARCHITECTURE.md, experiments/run_model_comparison.py,
-% experiments/run_epsilon_sweep.py). Every number in Tables I-II is read
-% directly from results/comparison/comparison.json and
-% results/comparison/epsilon_sweep.json, produced by real training runs, not
-% asserted. No citation below is a placeholder — every \bibitem is a real,
-% verifiable paper. The prior related-work comparison table (unverified
-% third-party numbers with no resolvable citations) has been removed; see
-% the reviewer-proofing note in Section II.
+% experiments/run_epsilon_sweep.py, experiments/build_real_paysim_splits.py,
+% run_training.py, src/federated/{homomorphic_encryption,proxy_server,
+% dp_accounting}.py). Every number in every table is read directly from a
+% results/*.json file produced by a real run, not asserted. No citation below
+% is a placeholder. This revision adds: real PaySim data (with a data-quality
+% defect found and fixed before trusting any number), Homomorphic Encryption
+% and Secure Aggregation now wired into the live training loop (previously
+% reference-only), and multi-round Renyi-DP composition accounting (which
+% surfaced a correction to every epsilon value reported previously).
 %
 % Compile with: pdflatex draft_paper.tex   (run twice for refs to settle)
 % Requires: pgfplots/tikz (bundled with all standard TeX distributions,
-% including Overleaf) for Fig. 1.
+% including Overleaf) for Figs. 1-2.
 % =============================================================================
 \documentclass[conference]{IEEEtran}
 \usepackage{amsmath,amssymb}
@@ -27,7 +29,7 @@
 
 \begin{document}
 
-\title{Federated Fraud Detection with Temporal Graph Transformers and Differential Privacy: A Measured Privacy-Utility Study}
+\title{Federated Fraud Detection with Temporal Graph Transformers and Differential Privacy: A Measured Privacy-Utility Study on Synthetic and Real-World Data}
 
 \author{
 \IEEEauthorblockN{Tanishk Maheshwari, Vaibhav Handoo, Vibhav Kolachana, Yash Kuber Khanna}
@@ -46,30 +48,36 @@ that data can never be legally or competitively pooled. We present a
 fraud detection system built around a Temporal Graph Transformer with a
 contrastive learning head, trained via federated learning (FedAvg and
 FedProx) across ten simulated bank clients, with every round's aggregate
-protected by client-level differential privacy (DP-FedAvg). Rather than
-asserting privacy-preserving federated learning as a good idea, we
-measure it: we benchmark our approach against a centralized Random
-Forest, a centralized (non-federated) deep model, and a federated model
-without differential privacy, all evaluated on one identical held-out
-test set. We further report a full nine-point epsilon-vs-utility sweep
-($\varepsilon \in \{1, 5, 10, 20, 50, 100, 500, 2000\}$ plus a no-DP
-ceiling) that demonstrates the differential privacy mechanism has a
-real, measurable effect rather than being an inert configuration flag,
-and that our chosen operating point ($\varepsilon=100$) costs a small,
-precisely quantified utility loss ($<2$ F1 points) relative to the
-matched non-private federated baseline. We
-also document three concrete engineering failures uncovered during
-development -- a synthetic-data generator that produced a trivially
-separable (and therefore useless) benchmark, a badly over-parameterized
-model that collapsed to a constant prediction under class imbalance, and
-a NaN-masking bug that silently hid a real training failure -- because a
-privacy-utility claim is only as credible as the pipeline that produced
-it.
+protected by client-level differential privacy (DP-FedAvg), Paillier
+homomorphic encryption, and an optional tiered secure-aggregation
+topology -- all three now exercised in the live training loop rather than
+left as reference code. We measure rather than assert: a four-model
+baseline comparison and a full epsilon-vs-utility sweep, each run twice --
+once on a schema-matched synthetic dataset and once on 1.9 million real
+PaySim transactions. The real-data run required finding and fixing a
+genuine upstream data defect first: every client's delivered validation
+and test split was 100\% fraud, which we traced, diagnosed, and rebuilt
+before trusting any downstream number. On real data, a batch-level
+fraud-starvation failure mode additionally required a targeted fix
+(weighted oversampling) before three of four compared models could learn
+anything beyond a degenerate constant prediction -- a structural finding
+about this architecture's regularization requirements under severe
+class imbalance, not a tuning footnote. Finally, implementing formal
+multi-round differential-privacy composition accounting (R\'enyi DP)
+surfaced a correction to every $\varepsilon$ value reported in this and
+prior work on this system: the classical Gaussian-mechanism calibration
+this project uses is provably tight only for $\varepsilon \le 1$, and at
+the project's operating point of $\varepsilon=100$ the true, rigorously
+composed privacy cost is several times larger than the nominal label. We
+report this and every other result in full, including the ones that look
+worse than a rounder number would, because a privacy-utility claim is
+only as credible as the pipeline and accounting behind it.
 \end{abstract}
 
 \begin{IEEEkeywords}
 federated learning, differential privacy, fraud detection, temporal
-graph transformer, contrastive learning, FedProx
+graph transformer, contrastive learning, FedProx, homomorphic
+encryption, R\'enyi differential privacy
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -93,23 +101,34 @@ its training data~\cite{mcmahan2018dp,abadi2016dpsgd}. Differential
 privacy (DP)~\cite{dwork2014dp}, applied at the client-update level,
 closes that gap by bounding and noising each round's aggregate update,
 at a cost: DP noise degrades model utility, and the size of that cost is
-an empirical question, not something that can be waved away.
+an empirical question, not something that can be waved away. Homomorphic
+encryption~\cite{paillier1999} and secure aggregation~\cite{bonawitz2017secagg}
+add a complementary, cryptographic guarantee on top of DP's statistical
+one: the server never observes an individual client's update in
+plaintext at all, not just a noised version of it.
 
-This paper makes two contributions. First, we describe a fraud
-detection architecture -- a Temporal Graph Transformer with a
-contrastive learning head -- trained under FedProx~\cite{li2020fedprox}
-with client-level DP-FedAvg~\cite{mcmahan2018dp}, and we report its
-performance against real, non-fabricated baselines on one shared
-held-out test set (Section~\ref{sec:results}). Second, and more
-centrally to this paper's argument, we report a full epsilon-vs-utility
-sweep that makes the privacy-utility tradeoff a measured curve rather
-than an assumption (Section~\ref{sec:epsilon}), and we document three
-real pipeline defects that, left uncaught, would have produced a
-misleadingly perfect-looking but meaningless result
-(Section~\ref{sec:lessons}). We consider that last contribution as
-important as the numbers themselves: a privacy-utility claim is only
-as trustworthy as the evaluation pipeline behind it, and we show our
-work on that pipeline rather than assuming it away.
+This paper makes four contributions, each grounded in a real, measured
+run rather than an assumption. First, we describe a fraud detection
+architecture -- a Temporal Graph Transformer with a contrastive learning
+head -- trained under FedProx~\cite{li2020fedprox} with client-level
+DP-FedAvg~\cite{mcmahan2018dp}, and report its performance against real,
+non-fabricated baselines on one shared held-out test set
+(Section~\ref{sec:results}). Second, we repeat every such measurement on
+1.9 million real PaySim transactions~\cite{lopezrojas2016paysim}, not
+only a synthetic stand-in, after finding and fixing a genuine
+data-quality defect in the delivered splits
+(Section~\ref{sec:realdata}). Third, we wire Paillier homomorphic
+encryption and a tiered secure-aggregation topology into the live
+training loop -- previously correct but disconnected reference code --
+and report their real, measured computational overhead
+(Section~\ref{sec:he}). Fourth, we implement formal multi-round
+R\'enyi-DP composition accounting and report the real cumulative privacy
+cost of a training run, which turns out to correct, not merely
+supplement, every per-round $\varepsilon$ value this project has
+previously reported (Section~\ref{sec:accounting}). We consider the
+discipline behind these four contributions -- measuring rather than
+asserting, and reporting defects and corrections rather than only
+successes -- as important as the headline numbers themselves.
 
 \section{Related Work}
 
@@ -133,9 +152,13 @@ client clips its \emph{entire round update}, and the server adds a
 single calibrated Gaussian noise draw to the aggregate, once per round.
 This is the mechanism we use. Abadi et al.~\cite{abadi2016dpsgd}
 established the moments-accountant approach to composing privacy loss
-across many training steps, and Dwork and Roth~\cite{dwork2014dp} give
-the formal $(\varepsilon,\delta)$-DP definition and its algebra that
-our privacy accounting rests on.
+across many training steps; Mironov~\cite{mironov2017rdp} generalized
+this into R\'enyi differential privacy (RDP), a composition framework
+that is tight for the Gaussian mechanism specifically and the one we
+adopt for multi-round accounting in Section~\ref{sec:accounting}. Dwork
+and Roth~\cite{dwork2014dp} give the formal $(\varepsilon,\delta)$-DP
+definition, and the classical Gaussian-mechanism calibration bound whose
+valid regime we re-examine in Section~\ref{sec:accounting}.
 
 \textbf{Secure aggregation and encryption.} Bonawitz et
 al.~\cite{bonawitz2017secagg} describe secure aggregation protocols that
@@ -143,10 +166,10 @@ let a server compute a sum of client updates without seeing any
 individual update, and Paillier's cryptosystem~\cite{paillier1999}
 underlies additively homomorphic aggregation schemes with the same
 goal. Both are complementary, cryptographic guarantees to DP's
-statistical one; our system implements a reference version of both but,
-as discussed in Section~\ref{sec:limitations}, does not yet wire them
-into the live training loop -- a documented simplification, not a
-claimed feature.
+statistical one; an earlier phase of this project implemented a
+reference version of both without wiring them into the live training
+loop. Section~\ref{sec:he} reports both now exercised in training, with
+real measured overhead.
 
 \textbf{Model architecture.} Our temporal branch is a standard
 Transformer encoder~\cite{vaswani2017attention} applied over a fixed
@@ -165,12 +188,12 @@ explainable-AI layers (SHAP/LIME), homomorphic-encryption-secured
 gradient aggregation, and FL combined with generative oversampling
 (WGAN/VAE) for extreme class imbalance. An earlier draft of this paper
 included a table of reported metrics from several such systems for
-context; we removed it here because those figures could not be traced
-to resolvable, citable sources at the time of writing, and an
-uncited numeric comparison is not defensible in a submitted paper.
-Table~\ref{tab:comparison} restricts this paper's quantitative claims
-to results we produced ourselves under a controlled, single-test-set
-protocol.
+context; we removed it because those figures could not be traced to
+resolvable, citable sources at the time of writing, and an uncited
+numeric comparison is not defensible in a submitted paper.
+Table~\ref{tab:comparison} and Table~\ref{tab:comparison-real} restrict
+this paper's quantitative claims to results we produced ourselves under
+a controlled, single-test-set protocol.
 
 \section{System Architecture}
 
@@ -201,17 +224,21 @@ differential privacy mechanism's usable operating range.
 
 \subsection{Federated Training: FedAvg and FedProx}
 Training is simulated across ten clients, each representing one bank
-with its own non-IID transaction distribution. Each round samples three
-clients, each of which trains locally for two epochs before sending its
-update to the server, for a total of $R=10$ communication rounds. The
-server aggregates client updates with
+with its own transaction distribution. Each round samples a subset of
+clients, each of which trains locally for several epochs before sending
+its update to the server. The server aggregates client updates with
 FedProx's proximal-term regularization ($\mu=0.1$), which penalizes a
 client's local update for drifting far from the current global model --
 the mechanism that keeps training stable when only a minority of
 clients are sampled per round and those clients disagree with each
-other's local optima.
+other's local optima. Section~\ref{sec:realdata} reports that this
+regularization is not merely helpful but \emph{necessary} on real data
+under severe class imbalance: the FedAvg-no-DP baseline, which lacks it,
+fails to learn a usable decision boundary even with the same data fix
+applied.
 
 \subsection{Client-Level Differential Privacy}
+\label{sec:dp-mechanism}
 Each client's update is clipped to a fixed $L_2$ norm (clip norm
 $=1.0$) before being sent to the server. Once per round, the server adds
 a single Gaussian noise draw to the aggregated update, scaled by the
@@ -227,32 +254,124 @@ Gaussian-mechanism noise scales with $\sigma\sqrt{d}$ for a
 $d$-dimensional update, meaning the number of trainable parameters
 directly determines how much noise a fixed $\varepsilon$ requires. This
 is precisely why the model's size (Section~III-A) and its DP budget are
-not independent design choices.
+not independent design choices. The noise scale $\sigma$ itself is
+calibrated from a target $\varepsilon$ via the classical Gaussian
+mechanism bound $\sigma = \Delta\sqrt{2\ln(1.25/\delta)}/\varepsilon$
+(Dwork and Roth~\cite{dwork2014dp}); Section~\ref{sec:accounting} shows
+that this formula's proof is tight only for $\varepsilon \le 1$, with
+direct consequences for every $\varepsilon$ value reported in this
+paper.
 
-\textit{Accounting scope.} Every $\varepsilon$ value reported in this
-paper (with $\delta=10^{-5}$) is the \emph{per-round} budget of the
-Gaussian mechanism, calibrated once and applied identically at every
-round. We do not apply a formal multi-round composition accountant
-(e.g., R\'enyi DP) over the $R=10$ rounds; the total privacy loss over a
-full training run is therefore larger than the per-round $\varepsilon$
-quoted throughout Sections~\ref{sec:results} and~\ref{sec:limitations},
-and composed accounting is left as future work (Section~VII).
+\subsection{Homomorphic Encryption and Secure Aggregation}
+\label{sec:he}
+An earlier phase of this project implemented Paillier additive
+homomorphic encryption~\cite{paillier1999} and a tiered proxy-server
+secure-aggregation topology~\cite{bonawitz2017secagg} as correct
+reference code, disconnected from the live training loop. Both are now
+exercised in training. With encryption enabled, each selected client
+scales its update by its own integer sample count in plaintext and
+encrypts the result with the server's public key
+($\mathrm{Enc}(n_k \cdot w_k)$, computed directly rather than via a
+second, equally expensive modular exponentiation under encryption); the
+server homomorphically sums the selected clients' encrypted,
+pre-scaled updates and decrypts only that one aggregate, never an
+individual client's contribution. With secure aggregation additionally
+enabled, each client's encrypted update is instead routed to one of
+$P$ proxy servers (round-robin, $\mathrm{client\_id} \bmod P$), each
+proxy blindly sums the encrypted updates it receives and forwards one
+partial sum, and the global server blindly sums the proxies' partial
+sums before decrypting only the final total -- a collusion-resistance
+property beyond direct client-to-server encryption alone, since an
+attacker would need to control the server \emph{and} every proxy that
+handled a client that round, not the server in isolation.
+
+Encrypting every one of a 45{,}292-parameter model's values
+individually with 512-bit Paillier keys does not scale in a naive,
+single-process implementation (benchmarked at $\approx$2.3\,ms per
+value, $\approx$104\,s to encrypt one client's full update serially).
+We parallelize encryption and decryption across all available CPU
+cores via a worker pool that receives the public (or private) key once
+per pool rather than once per value. Measured on a real training run
+(3 rounds, 22 CPU cores, 512-bit keys -- demo-speed only, not
+production-secure; 2048-bit keys cost roughly another order of
+magnitude of compute): 31--56\,s to encrypt one client's full update,
+34--41\,s to decrypt the server's aggregate, per round. Adding the
+proxy tier costs almost nothing beyond this: proxy-level aggregation is
+plain modular multiplication rather than exponentiation, measured at
+0.33--0.41\,s per round regardless of client count.
 
 \section{Experimental Setup}
+\label{sec:setup}
 
+\subsection{Synthetic Data}
 Data is drawn from a schema-matched synthetic PaySim-style
-generator~\cite{lopezrojas2016paysim} (Section~\ref{sec:limitations}
-discusses why synthetic, not the original PaySim release, is used
-here), producing overlapping -- not disjoint -- feature distributions
-for fraud and legitimate transactions, with 12\% of fraud transactions
-deliberately drawn from the \emph{legitimate} distribution (``quiet
-fraud'') to avoid a trivially separable benchmark. Ten clients are
-generated with independent, non-identical transaction distributions.
-All models in Section~\ref{sec:results} are evaluated on one shared,
-never-trained-on held-out test set of 6{,}000 sequences (362 fraud, a
-6.03\% fraud rate), pooled across all clients.
+generator~\cite{lopezrojas2016paysim}, producing overlapping -- not
+disjoint -- feature distributions for fraud and legitimate transactions,
+with 12\% of fraud transactions deliberately drawn from the
+\emph{legitimate} distribution (``quiet fraud'') to avoid a trivially
+separable benchmark. Ten clients are generated with independent,
+non-identical transaction distributions. All synthetic-data models in
+Section~\ref{sec:results} are evaluated on one shared, never-trained-on
+held-out test set of 6{,}000 sequences (362 fraud, a 6.03\% fraud rate),
+pooled across all clients.
 
-Four models are compared under identical evaluation conditions:
+\subsection{Real-World Data}
+\label{sec:realdata}
+We additionally evaluate on 1.9 million real PaySim
+transactions~\cite{lopezrojas2016paysim}, pre-windowed into 2.86 million
+ten-step sequences and partitioned across the same ten simulated
+clients. Before this data could be used, we found and fixed a genuine
+defect in how it had been delivered: \emph{every client's validation and
+test split was 100\% fraud}, with zero legitimate sequences present,
+verified on the complete files rather than a sample. A split with only
+one class present makes precision, ROC-AUC, and a confusion matrix
+undefined, so training against the delivered splits directly would have
+produced numbers that looked like metrics but measured nothing.
+
+We first attempted the natural-seeming fix of pooling each client's
+train, validation, and test rows together and re-splitting with proper
+stratification. This was the wrong fix: it merely redistributed the
+same corruption evenly, producing a uniform $\approx$30\% fraud rate in
+every resulting split for every client, nowhere near real PaySim's
+documented $\approx$0.13\% rate -- proof that the delivered
+validation/test files were a separate, inflated fraud pool bolted onto
+an otherwise clean training file, not simply misassigned legitimate
+rows. The working fix discards the delivered validation/test files
+entirely and rebuilds all three splits from each client's \emph{training}
+file alone (0.04--0.17\% fraud for nine of ten clients, the correct
+order of magnitude for real PaySim) via a fresh stratified 70/15/15
+split. One client (client 9) is a separate, unexplained anomaly --
+46.9\% fraud in its own original training file, roughly three orders of
+magnitude above its peers -- carried through unmodified and excluded
+from the real-data results below rather than silently normalized, since
+its root cause could not be determined (the preprocessing configuration
+referenced in the delivered dataset's own metadata does not exist
+anywhere in our pipeline).
+
+\emph{Fraud-starvation under real-world imbalance.} Real PaySim's
+$\approx$0.1--0.3\% per-client fraud rate, combined with a training
+batch size of 64, puts the expected number of fraud examples in a
+typical batch below one. Standard loss-level class reweighting
+(a positive-class weight in the binary cross-entropy loss) has nothing
+to act on in a batch that contains no positive examples at all, and we
+verified this empirically: sweeping the positive-class weight from 8 to
+400 produced a byte-identical confusion matrix at every setting,
+because per-batch gradient-norm clipping saturates the weighting's
+effect once the batch itself is starved of signal. Post-hoc decision
+threshold tuning on the resulting checkpoint recovered essentially no
+additional F1, confirming the bottleneck was upstream of both the loss
+function and the operating threshold. We fix this with weighted
+oversampling (a per-batch sampler that targets a fixed fraction of
+fraud examples per batch, independent of the true class ratio) and
+report, in Section~\ref{sec:realdata-results}, that this is necessary
+but, for two of the four compared models, not sufficient on its own:
+models lacking FedProx's proximal term or DP's noise as additional
+training-time regularization remained unable to learn past oversampling
+alone.
+
+\subsection{Model Comparison Protocol}
+Four models are compared under identical evaluation conditions, on both
+the synthetic and real datasets:
 \begin{itemize}
 \item \textbf{Centralized RandomForest} -- all clients' raw data pooled,
 no privacy.
@@ -261,35 +380,40 @@ architecture, all clients' raw data pooled, no federation and no DP.
 Isolates the cost of federation alone.
 \item \textbf{Federated (FedAvg, no DP)} -- data never pooled, but no
 differential privacy applied. Isolates the cost of DP alone.
-\item \textbf{Federated (FedProx + DP)} -- our full system, $\varepsilon=100$.
+\item \textbf{Federated (FedProx + DP)} -- our full system.
 \end{itemize}
 
 \textit{Reproducibility.} All experiments use a fixed random seed (42)
-for data generation and training, $R=10$ federated rounds, 3-of-10
-clients sampled per round, 2 local epochs per client, and clip norm
-$1.0$ (Section~III-C). Code and configuration to reproduce every table
-in this paper are provided in the accompanying repository.
+for data generation and training. Synthetic-data experiments use
+$R=10$ federated rounds, 3-of-10 clients sampled per round, 2 local
+epochs per client, clip norm 1.0, and $\varepsilon=100$. Real-data
+experiments (Section~\ref{sec:realdata-results}) use a reduced round
+and sample budget relative to synthetic (stated per table) given the
+substantially larger real dataset's wall-clock cost; this is disclosed
+per result rather than left implicit. Code and configuration to
+reproduce every table in this paper are provided in the accompanying
+repository.
 
 \section{Results}
 \label{sec:results}
 
-\subsection{Baseline Comparison}
-Table~\ref{tab:comparison} reports all four models on the shared test
-set. The centralized RandomForest wins on raw accuracy and F1 --
-expected, since it is the only model with zero privacy cost and access
-to every client's pooled raw data. Note that the ``Federated, no DP''
-row uses FedAvg rather than FedProx, so it is not a clean single-variable
-ablation of DP alone: it differs from our full system in both the
-aggregation algorithm and the privacy mechanism. Our full system
-(FedProx + DP, $\varepsilon=100$) nonetheless matches or exceeds this
-FedAvg baseline on every metric. The clean ablation of DP's cost in
-isolation -- same FedProx configuration, DP on vs.\ off -- is reported
-separately in Section~\ref{sec:epsilon} (Table~\ref{tab:epsilon}),
-which shows a small but real utility cost at $\varepsilon=100$ relative
-to the FedProx no-DP ceiling.
+\subsection{Synthetic-Data Baseline Comparison}
+Table~\ref{tab:comparison} reports all four models on the shared
+synthetic test set. The centralized RandomForest wins on raw accuracy
+and F1 -- expected, since it is the only model with zero privacy cost
+and access to every client's pooled raw data. Note that the
+``Federated, no DP'' row uses FedAvg rather than FedProx, so it is not
+a clean single-variable ablation of DP alone: it differs from our full
+system in both the aggregation algorithm and the privacy mechanism. Our
+full system (FedProx + DP, $\varepsilon=100$ nominal; see
+Section~\ref{sec:accounting} for why ``nominal'' is now a load-bearing
+qualifier) nonetheless matches or exceeds this FedAvg baseline on every
+metric. The clean ablation of DP's cost in isolation -- same FedProx
+configuration, DP on vs.\ off -- is reported separately in
+Section~\ref{sec:epsilon} (Table~\ref{tab:epsilon}).
 
 \begin{table}[!t]
-\caption{Baseline comparison on the shared held-out test set (6{,}000 sequences, 362 fraud)}
+\caption{Baseline comparison, synthetic data (6{,}000 sequences, 362 fraud)}
 \label{tab:comparison}
 \centering
 \begin{tabular}{@{}lccccc@{}}
@@ -299,33 +423,31 @@ Model & Acc. & Prec. & Rec. & F1 & AUC \\
 Centralized RF          & 98.27\% & 95.74\% & 74.59\% & 83.85\% & 94.74\% \\
 Centralized Deep        & 97.72\% & 90.04\% & 69.89\% & 78.69\% & 94.11\% \\
 Federated, no DP        & 97.40\% & 84.11\% & 70.17\% & 76.51\% & 93.98\% \\
-\textbf{FedProx + DP} (ours, $\varepsilon{=}100$) & \textbf{97.50\%} & \textbf{85.81\%} & \textbf{70.17\%} & \textbf{77.20\%} & 93.48\% \\
+\textbf{FedProx + DP} (ours) & \textbf{97.50\%} & \textbf{85.81\%} & \textbf{70.17\%} & \textbf{77.20\%} & 93.48\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{The Privacy-Utility Tradeoff}
+\subsection{Synthetic-Data Privacy-Utility Tradeoff}
 \label{sec:epsilon}
 Table~\ref{tab:epsilon} and Fig.~\ref{fig:epsilon} report a full sweep
-across the DP privacy budget $\varepsilon$, everything else held fixed,
-plus the no-DP ceiling. The curve has the shape a genuine privacy-utility tradeoff is
-supposed to have: a hard floor where the mechanism destroys the model
-($\varepsilon \le 5$, accuracy collapses to the model predicting the
-minority class for every input), a transition region
+across the DP privacy budget $\varepsilon$ (nominal, as configured --
+see Section~\ref{sec:accounting}), everything else held fixed, plus the
+no-DP ceiling. The curve has the shape a genuine privacy-utility
+tradeoff is supposed to have: a hard floor where the mechanism destroys
+the model ($\varepsilon \le 5$), a transition region
 ($\varepsilon \approx 10$--$20$), and a plateau ($\varepsilon \ge 50$)
 where additional noise reduction stops mattering. This shape is, in
-itself, the evidence that the DP mechanism is doing real work rather
-than being an inert configuration flag: an $\varepsilon$ that changed
-nothing across three orders of magnitude would indicate a broken, not a
-successful, privacy mechanism.
+itself, evidence that the DP mechanism is doing real work rather than
+being an inert configuration flag.
 
 \begin{table}[!t]
-\caption{Privacy-utility sweep: same FedProx-federated model, only $\varepsilon$ varied}
+\caption{Privacy-utility sweep, synthetic data: same FedProx-federated model, only nominal $\varepsilon$ varied}
 \label{tab:epsilon}
 \centering
 \begin{tabular}{@{}lccc@{}}
 \toprule
-$\varepsilon$ & Accuracy & F1 & ROC-AUC \\
+Nominal $\varepsilon$ & Accuracy & F1 & ROC-AUC \\
 \midrule
 1.0    & 6.03\%  & 0.114 & 0.500 \\
 5.0    & 6.18\%  & 0.114 & 0.442 \\
@@ -346,7 +468,7 @@ No DP (ceiling) & 97.45\% & 0.769 & 0.938 \\
 \begin{axis}[
     width=\columnwidth, height=4.2cm,
     xmode=log,
-    xlabel={Privacy budget $\varepsilon$ (log scale)},
+    xlabel={Nominal privacy budget $\varepsilon$ (log scale)},
     ylabel={Score},
     ymin=0, ymax=1,
     xmin=1, xmax=2000,
@@ -369,87 +491,284 @@ No DP (ceiling) & 97.45\% & 0.769 & 0.938 \\
 \addlegendentry{AUC ceiling (no DP)}
 \end{axis}
 \end{tikzpicture}
-\caption{Privacy-utility tradeoff from Table~\ref{tab:epsilon}: F1 and
-ROC-AUC vs.\ $\varepsilon$. Dashed lines mark the no-DP ceiling.}
+\caption{Privacy-utility tradeoff from Table~\ref{tab:epsilon}, synthetic
+data: F1 and ROC-AUC vs.\ nominal $\varepsilon$. Dashed lines mark the
+no-DP ceiling.}
 \label{fig:epsilon}
 \end{figure}
 \FloatBarrier
 
-\subsection{Engineering Lessons: How the Numbers Got Trustworthy}
-\label{sec:lessons}
-We report three defects found and fixed during development, because
-each one would have independently produced a misleadingly clean result
-if left uncaught.
+\subsection{Real-Data Results}
+\label{sec:realdata-results}
+We repeat the same two measurements on the real PaySim data described
+in Section~\ref{sec:realdata} (client 9 excluded as documented), with a
+weighted-oversampling fraud rate target of 2\% per batch -- the value
+found, by sweeping the oversampling target against the fraud-starved
+baseline, to improve both F1 and recall simultaneously rather than only
+trading one for the other.
 
-\textit{1) A trivially separable benchmark.} An early version of the
-synthetic data generator drew fraud and legitimate transactions from
-disjoint value ranges (e.g., legitimate amounts capped at \$400, every
-fraud archetype starting above it). Every model, including a
-RandomForest with no access to sequence structure, achieved 100\%
-accuracy -- not because any model was good, but because the benchmark
-was trivial. We rebuilt the generator with overlapping distribution
-families and a 12\% ``quiet fraud'' fraction drawn from the legitimate
-distribution.
+\begin{table}[!t]
+\caption{Baseline comparison, real PaySim data (270{,}225 sequences, 0.08\% fraud; 8 rounds, 4 clients/round, 20{,}000 samples/client, 2\% oversampling target)}
+\label{tab:comparison-real}
+\centering
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Model & Acc. & Prec. & Rec. & F1 & AUC \\
+\midrule
+Centralized RF          & 99.9\% & 76.3\% & 33.0\% & 46.1\% & 96.7\% \\
+Centralized Deep        & 99.9\% & 0.0\%  & 0.0\%  & 0.0\%  & 50.0\% \\
+Federated, no DP        & 84.2\% & 0.3\%  & 69.3\% & 0.7\%  & 84.8\% \\
+\textbf{FedProx + DP} (ours) & \textbf{99.8\%} & \textbf{18.6\%} & \textbf{51.2\%} & \textbf{27.3\%} & 85.3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This result is not simply ``lower numbers than synthetic'' -- it is
+structurally different. Weighted oversampling alone did not stabilize
+every model. Centralized Deep stayed fully collapsed (F1 = 0, ROC-AUC =
+0.5, indistinguishable from random, even after four fresh-initialization
+retries); Federated FedAvg without DP inverted into the opposite
+failure mode, flagging 42{,}723 of 227{,}410 legitimate transactions as
+fraud (an effective precision of 0.3\%) rather than learning a real
+decision boundary. Only FedProx + DP -- the only one of the four models
+with \emph{both} a proximal term and DP noise acting as training-time
+regularization -- produced a stable, non-degenerate result. We read
+this as a real property of the architecture under severe real-world
+class imbalance, not a bug to retune away: oversampling fixes
+batch-level fraud starvation, but does not substitute for the
+regularization that FedProx's proximal term and DP's Gaussian noise
+independently provide.
+
+\begin{table}[!t]
+\caption{Privacy-utility sweep, real PaySim data (same FedProx-federated model, 5 rounds, 4 clients/round, 10{,}000 samples/client, 2\% oversampling target; reduced scope vs.\ Table~\ref{tab:epsilon} given real data's larger wall-clock cost)}
+\label{tab:epsilon-real}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Nominal $\varepsilon$ & Accuracy & F1 & ROC-AUC \\
+\midrule
+1.0   & 0.08\%  & 0.0016 & 0.500 \\
+10.0  & 96.54\% & 0.0189 & 0.731 \\
+\textbf{50.0}  & \textbf{99.83\%} & \textbf{0.3395} & 0.864 \\
+100.0 (default) & 99.82\% & 0.3278 & 0.865 \\
+500.0 & 99.83\% & 0.3238 & 0.853 \\
+No DP (ceiling) & 99.85\% & 0.3162 & 0.824 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:epsilon-real} confirms the same qualitative shape as the
+synthetic sweep on genuinely real data: destroyed at $\varepsilon=1$
+(the model collapses to flagging every input as fraud, ROC-AUC exactly
+0.5), recovering by $\varepsilon=10$, and plateaued from
+$\varepsilon=50$ upward -- independent confirmation that the DP
+mechanism does real work on real data, not only on a synthetic
+benchmark. One genuine difference from the synthetic result: at
+moderate $\varepsilon$ (50--500), DP noise here slightly
+\emph{outperforms} the no-DP ceiling (F1 0.32--0.34 vs.\ 0.316) rather
+than costing utility, consistent with Table~\ref{tab:comparison-real}'s
+finding that DP's noise functions as useful training-time
+regularization under this real, severe imbalance, not purely as a
+privacy tax.
+
+\subsection{Encryption and Secure Aggregation}
+Section~\ref{sec:he} reported the real, measured computational
+overhead of homomorphic encryption and secure aggregation now wired
+into training. We note here, for completeness, that these mechanisms
+were verified correct independent of model quality: homomorphic
+weighted aggregation was confirmed algebraically identical to plaintext
+FedAvg aggregation up to floating-point rounding on synthetic test
+vectors before being exercised on real model updates, and the
+proxy-tiered variant was verified to correctly handle a proxy receiving
+zero client updates in a given round (a real occurrence whenever fewer
+clients are selected than proxies configured) without error.
+
+\subsection{Multi-Round Differential Privacy Accounting}
+\label{sec:accounting}
+Every $\varepsilon$ value reported in Sections~\ref{sec:epsilon}
+and~\ref{sec:realdata-results} is a \emph{per-round} budget for the
+server's one Gaussian noise draw that round
+(Section~\ref{sec:dp-mechanism}). We implement multi-round composition
+accounting via R\'enyi differential privacy
+(RDP)~\cite{mironov2017rdp}, the standard tight method for composing
+Gaussian mechanisms: each round's mechanism is converted to its R\'enyi
+divergence at a range of orders $\alpha$, RDP composes by simple
+addition across rounds at each fixed $\alpha$, and the sum is converted
+back to a single $(\varepsilon,\delta)$-DP guarantee by selecting
+whichever $\alpha$ gives the tightest result.
+
+Implementing and validating this accountant surfaced a finding more
+significant than ``no cumulative total previously existed.'' The
+classical Gaussian-mechanism calibration this project uses throughout
+(Section~\ref{sec:dp-mechanism}, following Dwork and
+Roth~\cite{dwork2014dp}) is proven tight only for $\varepsilon \le 1$.
+We verified numerically, across the actual range of nominal
+$\varepsilon$ this project uses, that the RDP-tight \emph{true}
+single-round privacy cost diverges substantially above that threshold:
+
+\begin{table}[!t]
+\caption{Nominal vs.\ RDP-tight true single-round $\varepsilon$ ($\delta=10^{-5}$)}
+\label{tab:eps-correction}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Nominal $\varepsilon$ & True RDP-tight $\varepsilon$ & Ratio \\
+\midrule
+0.1   & 0.099   & 0.99 \\
+1.0   & 1.01    & 1.01 \\
+10.0  & 12.0    & 1.20 \\
+50.0  & 102.9   & 2.06 \\
+\textbf{100.0 (project default)} & \textbf{313.2} & \textbf{3.13} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Within the classical formula's proven regime ($\varepsilon \le 1$) the
+nominal and true values agree closely. This project operates at
+$\varepsilon = 50$--$2000$ out of practical necessity
+(Section~\ref{sec:dp-mechanism}'s $\sigma\sqrt{d}$ scaling against a
+45{,}292-parameter model), which is exactly the regime in which the
+classical formula understates the true cost. This is not a new defect
+introduced by adding composition accounting -- it is a pre-existing
+property of every $\varepsilon$ this project has ever reported,
+measurable only now because RDP accounting, which carries no such
+regime restriction, provides an independent way to check it.
+
+Table~\ref{tab:accounting-real} reports the full cumulative picture
+from an actual 15-round real-data training run at nominal
+$\varepsilon=100$: naively multiplying the nominal label by the round
+count substantially understates the true cost; naively summing the
+\emph{true} per-round cost is a valid but loose upper bound; and
+RDP composition gives the tight answer in between.
+
+\begin{table}[!t]
+\caption{Cumulative $\varepsilon$ after 15 real-data training rounds (nominal per-round $\varepsilon=100$, $\delta=10^{-5}$)}
+\label{tab:accounting-real}
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+Quantity & Value \\
+\midrule
+Nominal label $\times$ 15 rounds (invalid) & 1{,}500.0 \\
+True per-round (313.2) $\times$ 15 rounds (loose) & 4{,}697.8 \\
+\textbf{RDP-composed total (tight)} & \textbf{3{,}629.9} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+RDP composition is demonstrably doing real work: 3{,}629.9 is
+$\approx$23\% tighter than naively summing the true per-round cost
+(4{,}697.8). But the honest total is still $\approx$2.4$\times$ what
+the commonly quoted nominal ``$\varepsilon=100$'' label alone would
+suggest. We report this in full rather than retroactively rounding
+earlier sections' nominal labels: this project's actual cumulative
+privacy budget over a real training run is in the thousands, not the
+hundreds, and closing that gap -- via per-example gradient clipping to
+reduce the effective dimensionality DP noise must cover, or a smaller
+per-round $\varepsilon$ made viable by further right-sizing -- is the
+clearest concrete next step this accounting identifies
+(Section~\ref{sec:conclusion}).
+
+\subsection{Engineering Lessons}
+\label{sec:lessons}
+We report defects found and fixed during development, beyond the data
+and accounting findings already detailed in
+Sections~\ref{sec:realdata} and~\ref{sec:accounting}, because each one
+would have independently produced a misleadingly clean result if left
+uncaught.
+
+\textit{1) A trivially separable synthetic benchmark.} An early version
+of the synthetic data generator drew fraud and legitimate transactions
+from disjoint value ranges. Every model, including a RandomForest with
+no access to sequence structure, achieved 100\% accuracy -- not because
+any model was good, but because the benchmark was trivial. We rebuilt
+the generator with overlapping distribution families and a 12\%
+``quiet fraud'' fraction.
 
 \textit{2) An over-parameterized, collapsing model.} At
-hidden\_dim=128 ($\approx1.07$M parameters for a 10-dimensional input),
-the model would, under the harder benchmark, collapse to a constant
-output (0\% recall, ROC-AUC exactly 0.5) once class imbalance and DP
-noise were both present. We right-sized the architecture to
+hidden\_dim=128 ($\approx1.07$M parameters), the model would collapse
+to a constant output (0\% recall, ROC-AUC exactly 0.5) once class
+imbalance and DP noise were both present. We right-sized to
 hidden\_dim=32 ($\approx45$K parameters), added a prior-informed bias
-initialization (using the known fraud base rate), and a class weight
-on the loss. This is also what dropped the usable DP $\varepsilon$
-floor from $\sim$2000 down to $\sim$20--50, a $\sim$40--100$\times$
-improvement, purely from right-sizing -- with no change to the privacy
-mechanism itself, exactly as the $\sigma\sqrt{d}$ scaling in
-Section~III-C predicts.
+initialization, and a class weight on the loss -- which also dropped
+the usable DP $\varepsilon$ floor by roughly two orders of magnitude,
+purely from right-sizing, exactly as $\sigma\sqrt{d}$ scaling predicts.
 
 \textit{3) A NaN-masking bug hiding a real training failure.}
 Guarding every loss term with a NaN-to-zero substitution prevented
-crashes but let the model silently continue training on a degenerate,
-input-ignoring prediction once corrupted, because
-\texttt{contrastive\_loss} or \texttt{aux\_loss} evaluating to
-\texttt{NaN} corrupted the total loss via \texttt{0.0 * NaN = NaN} even
-at zero weight (IEEE~754 semantics). We fixed this by sanitizing
-model outputs at their source rather than downstream, and by adding
-per-round checkpoint-and-rollback so a round that does collapse cannot
-poison the rest of training.
+crashes but let the model silently continue training on a degenerate
+prediction once corrupted, because a NaN auxiliary loss term corrupted
+the total loss via $0.0 \times \mathrm{NaN} = \mathrm{NaN}$ even at zero
+loss weight (IEEE~754 semantics). We fixed this by sanitizing model
+outputs at their source, and by adding per-round checkpoint rollback so
+a collapsed round cannot poison subsequent training.
+
+\textit{4) A Windows-specific multiprocessing crash in dormant reference
+code.} Wiring the homomorphic encryption reference implementation into
+live training (Section~\ref{sec:he}) immediately surfaced a
+\texttt{UnicodeEncodeError} crash from emoji characters in its
+diagnostic output on Windows' default console encoding, and separately
+a process-pool crash that only reproduced when invoked through the
+actual training entry point rather than an isolated interactive test --
+both strong evidence the reference code had never previously been run
+end-to-end on this platform, consistent with it having been
+disconnected from training until this work.
 
 \section{Limitations}
 \label{sec:limitations}
-We report these plainly rather than rounding up. The original PaySim
-dataset~\cite{lopezrojas2016paysim} is not available in our environment;
-all reported numbers are on a schema-matched synthetic stand-in, useful
-for pipeline correctness but not a real-world performance claim. The
-graph branch is a simplified per-account encoder, not a relational
-graph over shared entities (user, merchant, card, device), pending
-real entity-linked edge data that our preprocessed sequence data does
-not carry. Homomorphic encryption and secure aggregation are
-implemented as correct reference code but are not exercised in the
-live training loop reported here. All $\varepsilon$ values reported
-are per-round budgets (Section~III-C); we do not report a formally
-composed multi-round total, which would be strictly larger.
+We report these plainly rather than rounding up. All synthetic-data
+numbers remain a pipeline-correctness check, not a real-world
+performance claim; Section~\ref{sec:realdata-results} shows the
+real-data numbers are meaningfully lower, as expected given real
+PaySim's roughly 45$\times$ sharper imbalance than the synthetic
+benchmark. Client 9's anomalous real-data fraud rate
+(Section~\ref{sec:realdata}) remains unexplained and is excluded rather
+than corrected. The graph branch remains a simplified per-account
+encoder, not a relational graph over shared entities, pending real
+entity-linked edge data that our preprocessed sequence data does not
+carry. The ten simulated clients draw from independent but not
+systematically heterogeneous distributions; genuine per-institution
+non-IID structure (different fraud patterns, not just different random
+samples) is not yet modeled, despite FedProx being chosen partly for
+non-IID robustness. All $\varepsilon$ values in this paper, including
+the corrected ones in Table~\ref{tab:eps-correction}, use the
+$(\varepsilon,\delta)$-DP framework applied at the level of one
+client's entire round contribution; we have not evaluated per-example
+gradient clipping (e.g.\ via Opacus, a listed but unused dependency),
+which would reduce the effective dimensionality DP noise must cover and
+is the most direct lever for lowering the now-corrected $\varepsilon$
+values in Table~\ref{tab:accounting-real}.
 
 \section{Conclusion and Future Work}
-We presented a federated, differentially private fraud detection
-system and, more importantly, the measured evidence for its central
-claim: that differential privacy has a real, quantifiable cost. The
-honest comparison against the strongest non-private baseline
-(centralized RandomForest; Table~\ref{tab:comparison}) is a gap of 0.8
-percentage points of accuracy, and the clean, single-variable cost of
-differential privacy itself (Table~\ref{tab:epsilon},
-Fig.~\ref{fig:epsilon}) is approximately 1.8 F1 points at
-$\varepsilon=100$ -- both in exchange for a formal privacy guarantee no
-centralized or federated-without-DP baseline can offer. Future work
-follows directly from Section~\ref{sec:limitations}: evaluating against
-the original PaySim release, wiring homomorphic encryption and secure
-aggregation into live training rather than leaving them as reference
-implementations, extending the graph branch to real cross-account
-entity links, applying a formal multi-round privacy accountant (e.g.,
-R\'enyi DP composition) to report a total rather than per-round budget
-(Section~III-C), and per-example gradient clipping (e.g.\ via Opacus)
-to push the usable $\varepsilon$ floor lower without the
-parameter-count penalty described in Section~III-C.
+\label{sec:conclusion}
+We presented a federated, differentially private, homomorphically
+encrypted fraud detection system and, more importantly, measured
+evidence for its central claims -- on both synthetic and real data --
+rather than assuming them. Differential privacy has a real, quantifiable
+cost on synthetic data (Table~\ref{tab:epsilon}) and does real,
+independently confirmed work on real data too
+(Table~\ref{tab:epsilon-real}), where it costs close to nothing and in
+one regime slightly \emph{helps}, acting as training-time
+regularization under severe class imbalance. Homomorphic encryption and
+secure aggregation are no longer reference code but genuinely exercised
+in training, with real, disclosed computational overhead
+(Section~\ref{sec:he}). And implementing formal multi-round privacy
+accounting did more than add a missing total: it corrected every
+$\varepsilon$ this project has reported, a finding we consider at least
+as important as the headline utility numbers, in keeping with this
+paper's governing principle that a privacy-utility claim is only as
+trustworthy as the accounting and pipeline behind it.
+
+Future work follows directly from Section~\ref{sec:limitations}:
+modeling genuine per-institution non-IID data rather than independent
+samples from shared distributions, extending the graph branch to real
+cross-account entity links, diagnosing client 9's real-data anomaly
+rather than excluding it, and per-example gradient clipping to bring
+the now-corrected cumulative $\varepsilon$ in
+Table~\ref{tab:accounting-real} down from the thousands toward a range
+more consistent with the differential privacy literature's typical
+operating points, without reintroducing the parameter-count-driven
+instability documented in Section~\ref{sec:lessons}.
 
 \section*{Acknowledgment}
 The authors thank Dr. Prafullata Kiran Auradkar for guidance throughout
@@ -462,6 +781,7 @@ PES University.
 \bibitem{mcmahan2018dp} H. B. McMahan, D. Ramage, K. Talwar, and L. Zhang, ``Learning Differentially Private Recurrent Language Models,'' in \textit{Proc. Int. Conf. Learning Representations (ICLR)}, 2018.
 \bibitem{dwork2014dp} C. Dwork and A. Roth, ``The Algorithmic Foundations of Differential Privacy,'' \textit{Foundations and Trends in Theoretical Computer Science}, vol. 9, no. 3--4, pp. 211--407, 2014.
 \bibitem{abadi2016dpsgd} M. Abadi, A. Chu, I. Goodfellow, H. B. McMahan, I. Mironov, K. Talwar, and L. Zhang, ``Deep Learning with Differential Privacy,'' in \textit{Proc. ACM SIGSAC Conf. Computer and Communications Security (CCS)}, 2016, pp. 308--318.
+\bibitem{mironov2017rdp} I. Mironov, ``R\'enyi Differential Privacy,'' in \textit{Proc. IEEE 30th Computer Security Foundations Symposium (CSF)}, 2017, pp. 263--275.
 \bibitem{bonawitz2017secagg} K. Bonawitz, V. Ivanov, B. Kreuter, A. Marcedone, H. B. McMahan, S. Patel, D. Ramage, A. Segal, and K. Seth, ``Practical Secure Aggregation for Privacy-Preserving Machine Learning,'' in \textit{Proc. ACM SIGSAC Conf. Computer and Communications Security (CCS)}, 2017, pp. 1175--1191.
 \bibitem{paillier1999} P. Paillier, ``Public-Key Cryptosystems Based on Composite Degree Residuosity Classes,'' in \textit{Proc. EUROCRYPT}, 1999, pp. 223--238.
 \bibitem{lopezrojas2016paysim} E. A. Lopez-Rojas, A. Elmir, and S. Ahmed, ``PaySim: A Financial Mobile Money Simulator for Fraud Detection,'' in \textit{Proc. 28th European Modeling and Simulation Symposium (EMSS)}, 2016.
