@@ -106,8 +106,9 @@ export default function Overview() {
         <Reveal className="mb-14">
           <p className="text-xs text-ink-muted max-w-3xl">
             From <span className="font-mono">{info.checkpoint}</span> — {info.num_rounds} real training
-            rounds, on rule-based synthetic data (the original PaySim dataset isn't available on this
-            machine). See{" "}
+            rounds, {info.checkpoint?.includes("paysim_real")
+              ? "on real PaySim data (1.9M real transactions, ~0.1-0.3% fraud)"
+              : "on rule-based synthetic data (same schema as PaySim)"}. See{" "}
             <Link to="/architecture" className="text-series-blue underline underline-offset-2">Architecture</Link>{" "}
             for what that means for these numbers, or{" "}
             <Link to="/comparison" className="text-series-blue underline underline-offset-2">Model Comparison</Link>{" "}

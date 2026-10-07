@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import {
   CartesianGrid, Legend, Line, LineChart, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -168,9 +169,12 @@ export default function Architecture() {
         <StaggerItem><Card>
           <h3 className="font-bold text-lg mb-2">Where the data comes from</h3>
           <p className="text-sm text-ink-secondary">
-            The original PaySim dataset isn't available on this machine. Training here runs on a
-            rule-based synthetic stand-in with the same schema (see <span className="font-mono text-xs">experiments/generate_synthetic_paysim.py</span>) —
-            useful as a pipeline-correctness check, not a real-world performance claim.
+            The comparison table and sweep above this run on a rule-based synthetic stand-in with
+            PaySim's schema (see <span className="font-mono text-xs">experiments/generate_synthetic_paysim.py</span>) —
+            useful as a pipeline-correctness check, not a real-world performance claim. Real PaySim
+            data (1.9M real transactions) is also integrated and trained end-to-end separately — see
+            the headline metric on Overview and the "Real PaySim data" card on{" "}
+            <Link to="/comparison" className="text-series-blue underline">Model Comparison</Link>.
           </p>
         </Card></StaggerItem>
       </Stagger>
