@@ -495,6 +495,19 @@ and the frontend's Architecture page for the epsilon-vs-accuracy curve that
 demonstrates the DP mechanism has a real, measurable effect - proof it isn't
 a config flag that silently does nothing.
 
+**Same sweep, real PaySim data** (`results/comparison_real/epsilon_sweep.json`,
+5 epsilon points instead of synthetic's 9 - reduced scope since the real-data model
+comparison above took 96 minutes and a comparable 9-point sweep wasn't tractable in
+one sitting): ε=1 destroys the model exactly as on synthetic data (accuracy 0.08%,
+AUC=0.500 - it collapses to flagging everything as fraud), recovers by ε=10, plateaus
+from ε=50 up (F1 0.32-0.34) - independent confirmation on real data that the mechanism
+does genuine work, not a synthetic-only artifact. One real difference from synthetic:
+moderate DP (ε=50-500) slightly *outperforms* no-DP here (F1 0.32-0.34 vs. 0.316)
+rather than costing utility, consistent with the model-comparison finding above that
+DP's noise functions as useful training-time regularization on real data's severe
+imbalance, not purely a privacy tax. Full table in README.md's "Real PaySim epsilon
+sweep."
+
 ### The road to these numbers - two real bugs found along the way
 
 The first version of this comparison hit **100% accuracy on every single

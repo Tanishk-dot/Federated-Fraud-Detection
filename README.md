@@ -227,6 +227,34 @@ that missing regularization. Not a bug to chase further - a real property of thi
 architecture under this data regime, reported honestly rather than re-run until it looks
 better.
 
+### Real PaySim epsilon sweep
+
+Same question as the synthetic sweep above - does DP actually do something, or is
+`ε=100` just a number - answered on real data
+(`experiments/run_epsilon_sweep.py --dataset paysim_real --exclude-clients 9
+--oversample-ratio 0.02 --epsilons 1 10 50 100 500`, 5 rounds, 10K samples/client -
+reduced scope vs. the synthetic sweep's 9 points/10 rounds, since the comparison run
+above took 96 minutes and a comparable 9-point sweep wasn't tractable in one sitting):
+
+| ε | Accuracy | F1 | Recall | ROC-AUC |
+|---|---|---|---|---|
+| 1.0 | 0.08% | 0.0016 | 100% | 0.500 — destroyed |
+| 10.0 | 96.54% | 0.0189 | 41.86% | 0.731 — recovering |
+| **50.0** | 99.83% | **0.3395** | 55.35% | 0.864 |
+| 100.0 (default) | 99.82% | 0.3278 | 54.88% | 0.865 |
+| 500.0 | 99.83% | 0.3238 | 49.77% | 0.853 |
+| No DP | 99.85% | 0.3162 | 42.79% | 0.824 |
+
+Same qualitative shape as synthetic: destroyed at ε=1 (the model collapses to flagging
+*everything* as fraud - recall=100% because nothing is held back, AUC=0.5 because that's
+equivalent to a coin flip), recovering by ε=10, plateaued from ε=50 up - real,
+independent confirmation the mechanism does genuine work on real data too, not just the
+synthetic benchmark. One real, interesting difference from synthetic: here, moderate DP
+(ε=50-500) slightly **outperforms** no-DP (F1 0.32-0.34 vs. 0.316) rather than costing
+utility - consistent with the model-comparison finding above that DP's noise acts as
+useful training-time regularization on this severely imbalanced real data, not purely a
+privacy tax.
+
 ## Quick start
 
 ```bash
