@@ -13,19 +13,21 @@ federated learning framework is wired into this project. For model architecture
 | 1. Data Locality | Raw data never leaves clients | Training happens on each bank's local data; only model updates are transmitted | ✅ real |
 | 2. Differential Privacy (DP) | A client's whole update is bounded/noised | See "Differential Privacy" below - client-level DP-FedAvg | ✅ real, `--dp` flag |
 | 3. Homomorphic Encryption (HE) | Server can't see individual client updates | Paillier additive HE in `homomorphic_encryption.py`, wired into `run_training.py`'s aggregation step | ✅ real, `--he` flag |
-| 4. Secure Aggregation | No single party sees all gradients | Proxy servers do intermediate aggregation (distributed trust) | ⚠️ implemented, **not wired into training** |
+| 4. Secure Aggregation | No single proxy/server sees every client's update | Proxy servers (`proxy_server.py`) do intermediate HE aggregation, wired into `run_training.py` | ✅ real, `--secure-agg` flag (requires `--he`) |
 | 5. TLS 1.3 | Transport security | Encrypts all network traffic between clients/proxies/server | 📝 not implemented - this is a simulation running in one process |
 | 6. Mutual Authentication | Identity verification | Clients and server authenticate to each other | 📝 not implemented, same reason |
 
 **On layer 3 (HE):** `run_training.py --he` genuinely routes client→server
 aggregation through Paillier encryption instead of plaintext FedAvg - each
-selected client's full parameter vector is encrypted client-side (public key
-only), scalar-multiplied by its integer sample count and homomorphically
-summed with the other selected clients' encrypted updates entirely under
-encryption, and the server (the only party holding the private key) decrypts
-only that one aggregate, never an individual client's update
-(`federated_aggregate_he()` in `run_training.py`). Verified algebraically
-identical to plaintext FedAvg up to float rounding.
+selected client's full parameter vector is scaled by its own integer sample
+count in plaintext (so `Enc(n_k·w_k)` is computed directly - mathematically
+identical to encrypt-then-scale-under-encryption, but avoids a second,
+needless modular exponentiation per value) and encrypted client-side (public
+key only); all selected clients' encrypted updates are homomorphically
+summed entirely under encryption, and the server (the only party holding the
+private key) decrypts only that one aggregate, never an individual client's
+update (`federated_aggregate_he()` in `run_training.py`). Verified
+algebraically identical to plaintext FedAvg up to float rounding.
 
 Naive single-process Paillier encryption of a 45,292-parameter model doesn't
 scale (benchmarked: ~2.3ms/value at 512-bit keys ⇒ ~104s to encrypt one
@@ -43,11 +45,41 @@ needed for real security; that costs roughly another order of magnitude of
 compute (see the key-size benchmark at the top of `homomorphic_encryption.py`'s
 module docstring).
 
-**On layer 4 (Secure Aggregation / proxy servers):** still exactly what it
-was - `proxy_server.py`'s tiered client→proxy→server topology is correct
-reference code, but nothing imports it into the training path that actually
-runs. HE (layer 3) and this tiered-trust topology (layer 4) are separable:
-wiring one doesn't require the other, and only the former is done.
+**On layer 4 (Secure Aggregation / proxy servers):** `run_training.py
+--secure-agg` (requires `--he`) now genuinely routes the same HE-encrypted,
+pre-scaled client updates through a tiered client→proxy→server topology
+(`ProxyServerManager`/`ProxyServer` in `proxy_server.py`) instead of
+client→server directly: each client is assigned to a proxy round-robin
+(`client_id % num_proxies`, `--num-proxies`, default 2), every proxy blindly
+sums the encrypted updates it receives and forwards one partial sum, and the
+global server blindly sums the proxies' partial sums and decrypts only the
+final total (`federated_aggregate_secure()` in `run_training.py`). This adds
+a real collusion-resistance property beyond direct client→server HE alone: a
+colluding attacker there only needs to control the server, but here would
+additionally need to control every proxy that handled at least one client
+that round. Real, measured cost from an actual 3-round run
+(`results/paysim_real_secureagg/`, 3 clients/round, 2 proxies, 22 CPU cores,
+512-bit keys): per-client encrypt cost is unchanged (30-56s, one outlier at
+238s likely system contention, not algorithmic - see the raw history JSON);
+**proxy-level aggregation itself is cheap, 0.33-0.41s per round** - unlike
+encrypt/decrypt, homomorphic addition is plain modular multiplication, not
+exponentiation, so adding a proxy tier costs almost nothing on top of the
+HE cost that already exists with plain `--he`. Two real bugs were found and
+fixed while wiring this in, both worth knowing about since they show
+`proxy_server.py` had genuinely never been run end-to-end before: an
+`UnicodeEncodeError` crash from emoji in its `print()` statements on
+Windows' default `cp1252` console encoding (stripped), and a scalar-multiply
+step in `federated_aggregate_he()` that was real but silently excluded from
+the disclosed timing numbers (fixed by the plaintext pre-scaling described
+above, which also made it faster).
+
+Note that "no single proxy sees every client" is a real property of this
+code path, but "the server never sees a plaintext update" still holds in the
+same sense as layer 3 - a single-process simulation, so it's a guarantee
+about what the aggregation code path ever reads, not about separate
+machines/processes with an actual network boundary between them. HE (layer
+3) and this tiered-trust topology (layer 4) are separable and independently
+toggleable: `--he` alone, or `--he --secure-agg` together.
 
 ### Round flow (what actually runs — `run_training.py`)
 

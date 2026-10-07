@@ -45,7 +45,7 @@ class ProxyServer:
         self.total_aggregations = 0
         self.aggregation_times = []
         
-        print(f"✅ Proxy Server {proxy_id} initialized")
+        print(f"Proxy Server {proxy_id} initialized")
         print(f"   Assigned clients: {assigned_clients}")
     
     def receive_encrypted_gradient(
@@ -65,14 +65,14 @@ class ProxyServer:
         """
         # Verify client is assigned to this proxy
         if client_id not in self.assigned_clients:
-            print(f"⚠️ Proxy {self.proxy_id}: Client {client_id} not assigned to this proxy")
+            print(f"Proxy {self.proxy_id}: Client {client_id} not assigned to this proxy")
             return False
         
         # Add to aggregator
         self.aggregator.add_client_gradient(encrypted_gradient)
         self.total_clients_served += 1
         
-        print(f"✅ Proxy {self.proxy_id}: Received encrypted gradient from Client {client_id}")
+        print(f"Proxy {self.proxy_id}: Received encrypted gradient from Client {client_id}")
         print(f"   Gradient size: {len(encrypted_gradient)} encrypted values")
         
         return True
@@ -88,10 +88,10 @@ class ProxyServer:
         
         num_clients = self.aggregator.get_num_clients()
         if num_clients == 0:
-            print(f"⚠️ Proxy {self.proxy_id}: No gradients to aggregate")
+            print(f"Proxy {self.proxy_id}: No gradients to aggregate")
             return None
         
-        print(f"\n🔐 Proxy {self.proxy_id}: Aggregating {num_clients} encrypted gradients...")
+        print(f"\nProxy {self.proxy_id}: Aggregating {num_clients} encrypted gradients...")
         
         # Perform homomorphic aggregation (sum without decryption)
         aggregated_encrypted = self.aggregator.aggregate()
@@ -102,7 +102,7 @@ class ProxyServer:
         self.total_aggregations += 1
         self.round_number += 1
         
-        print(f"✅ Proxy {self.proxy_id}: Aggregation complete")
+        print(f"Proxy {self.proxy_id}: Aggregation complete")
         print(f"   Clients aggregated: {num_clients}")
         print(f"   Aggregation time: {aggregation_time:.3f}s")
         print(f"   Output size: {len(aggregated_encrypted)} encrypted values")
@@ -170,7 +170,7 @@ class ProxyServerManager:
             proxy = ProxyServer(proxy_id, he, assigned_clients)
             self.proxies.append(proxy)
         
-        print(f"\n✅ Proxy Server Manager initialized")
+        print(f"\nProxy Server Manager initialized")
         print(f"   Number of proxies: {num_proxies}")
         print(f"   Number of clients: {num_clients}")
         print(f"   Client assignments: {self.client_assignments}")
@@ -210,7 +210,7 @@ class ProxyServerManager:
         Returns:
             global_encrypted: Final encrypted sum from all proxies
         """
-        print("\n🌐 Global Server: Aggregating from all proxy servers...")
+        print("\nGlobal Server: Aggregating from all proxy servers...")
         
         proxy_aggregates = []
         for proxy in self.proxies:
@@ -222,10 +222,10 @@ class ProxyServerManager:
             raise ValueError("No proxy aggregates available")
         
         # Final homomorphic aggregation
-        print(f"\n🔐 Global Server: Final aggregation of {len(proxy_aggregates)} proxy sums...")
+        print(f"\nGlobal Server: Final aggregation of {len(proxy_aggregates)} proxy sums...")
         global_encrypted = self.he.aggregate_encrypted(proxy_aggregates)
         
-        print(f"✅ Global Server: Final aggregation complete")
+        print(f"Global Server: Final aggregation complete")
         
         return global_encrypted
     
@@ -251,7 +251,7 @@ if __name__ == "__main__":
     # Initialize encryption
     from homomorphic_encryption import PaillierEncryption
     he = PaillierEncryption(key_size=512)
-    print(f"✅ Generated encryption keys")
+    print(f"Generated encryption keys")
     
     # Create proxy server manager
     num_proxies = 2
@@ -296,9 +296,9 @@ if __name__ == "__main__":
     global_decrypted = he.decrypt_tensor(global_encrypted, (10,))
     expected_sum = sum(client_gradients)
     
-    print(f"\n✅ Decrypted global gradient:\n{global_decrypted}")
-    print(f"\n✅ Expected sum:\n{expected_sum}")
-    print(f"\n✅ Difference: {torch.abs(global_decrypted - expected_sum).max():.6f}")
+    print(f"\nDecrypted global gradient:\n{global_decrypted}")
+    print(f"\nExpected sum:\n{expected_sum}")
+    print(f"\nDifference: {torch.abs(global_decrypted - expected_sum).max():.6f}")
     
     # Print statistics
     print("\n" + "="*60)
@@ -312,4 +312,4 @@ if __name__ == "__main__":
         print(f"  Total aggregations: {stats['total_aggregations']}")
         print(f"  Avg aggregation time: {stats['avg_aggregation_time']:.3f}s")
     
-    print("\n🎉 All tests passed!")
+    print("\nAll tests passed!")

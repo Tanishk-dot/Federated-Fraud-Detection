@@ -313,13 +313,15 @@ white-text-on-white on this dark theme, making 9 of 10 options invisible.
   shared entities (user, merchant, card, device) — the real `HeterogeneousGraphEncoder`
   (HGTConv) exists in code but needs entity-linked edge data this pipeline doesn't
   produce yet.
-- Homomorphic encryption is now wired into the live training loop
-  (`run_training.py --he`) — real Paillier encryption of each client's full update,
-  homomorphic weighted aggregation, server decrypts only the aggregate. Real, measured
-  cost: 31–48s to encrypt one client's full 45,292-param update, 34–41s to decrypt the
-  aggregate, per round (512-bit keys — demo-speed only, not production-secure; see
-  ARCHITECTURE.md). Secure Aggregation's proxy-server tiered topology remains
-  implemented as correct reference code, not wired in.
+- Homomorphic encryption **and** Secure Aggregation are now both wired into the live
+  training loop (`run_training.py --he` / `--he --secure-agg`) — real Paillier
+  encryption of each client's full update, either aggregated directly by the server or
+  routed through a tiered client→proxy→server topology so no single proxy sees every
+  client. Real, measured cost: 31–48s to encrypt one client's full 45,292-param update,
+  34–41s to decrypt the aggregate, per round (512-bit keys — demo-speed only, not
+  production-secure; see ARCHITECTURE.md); adding the proxy tier costs almost nothing
+  extra (0.33–0.41s for the proxy-level aggregation itself, since homomorphic addition
+  is plain modular multiplication, not exponentiation).
 - All reported `ε` values are **per-round** DP-FedAvg budgets; no formal multi-round
   composition accountant (e.g., Rényi DP) has been applied, so the true cumulative
   privacy loss across a full run is larger than any single `ε` quoted above.

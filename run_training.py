@@ -526,16 +526,88 @@ def federated_aggregate_he(global_model, client_models, client_sizes, he, he_wor
     agg_cipher = None
     for client_model, n_k in zip(client_models, client_sizes):
         client_params = dict(client_model.named_parameters())
-        flat = torch.cat([client_params[name].detach().flatten() for name in param_names]).double().tolist()
+        flat = torch.cat([client_params[name].detach().flatten() for name in param_names]).double()
+        # Scale by n_k in PLAINTEXT before encrypting (Enc(n_k*m) computed
+        # directly) rather than encrypt-then-multiply_encrypted_by_scalar,
+        # which would be a second, equally expensive modular exponentiation
+        # per value run sequentially on the main process - mathematically
+        # identical since the client already holds the plaintext, but ~2x
+        # faster and avoids a slow, easy-to-miss undisclosed cost.
+        flat_scaled = (flat * n_k).tolist()
         t0 = time.time()
-        enc = encrypt_values_parallel(flat, he.public_key, n_workers=he_workers)
+        enc_scaled = encrypt_values_parallel(flat_scaled, he.public_key, n_workers=he_workers)
         timing["encrypt_seconds"].append(time.time() - t0)
 
-        scaled = [he.multiply_encrypted_by_scalar(c, n_k) for c in enc]
         if agg_cipher is None:
-            agg_cipher = scaled
+            agg_cipher = enc_scaled
         else:
-            agg_cipher = [he.add_encrypted(a, b) for a, b in zip(agg_cipher, scaled)]
+            agg_cipher = [he.add_encrypted(a, b) for a, b in zip(agg_cipher, enc_scaled)]
+
+    t0 = time.time()
+    decrypted_sum = decrypt_values_parallel(agg_cipher, he.private_key, n_workers=he_workers)
+    timing["decrypt_seconds"] = time.time() - t0
+
+    flat_avg = torch.tensor(decrypted_sum, dtype=torch.float) / total_size
+
+    global_state = global_model.state_dict()
+    offset = 0
+    for name, numel, shape in zip(param_names, param_numels, param_shapes):
+        global_state[name] = flat_avg[offset:offset + numel].reshape(shape)
+        offset += numel
+    global_model.load_state_dict(global_state)
+    return global_model, timing
+
+
+def federated_aggregate_secure(global_model, client_models, client_sizes, client_ids,
+                                he, proxy_manager, he_workers=None):
+    """
+    The same HE-weighted aggregation as federated_aggregate_he(), but routed
+    through a tiered client -> proxy -> global-server topology
+    (src/federated/proxy_server.py's ProxyServer/ProxyServerManager) instead
+    of client -> server directly. This is "Secure Aggregation" layer 4 from
+    docs/ARCHITECTURE.md's privacy table, now actually wired in rather than
+    reference-only.
+
+    Each client still encrypts its own update (public key only) and scales
+    it by its own n_k in plaintext before encrypting - identical to
+    federated_aggregate_he(). What's different: the encrypted, pre-scaled
+    update goes to that client's ASSIGNED PROXY (round-robin,
+    client_id % num_proxies - ProxyServerManager), which blindly sums
+    everything it receives under encryption and forwards ONE partial sum to
+    the global server; the server sums the proxies' partial sums (also
+    blind) and is the only party that ever decrypts anything, and only the
+    final total. No proxy and no client ever sees a plaintext update, and no
+    single proxy sees every client's contribution - a basic
+    collusion-resistance property beyond what direct client->server HE
+    alone provides (a colluding server there still only needs itself; here
+    it would need the server AND every proxy that handled at least one
+    client this round).
+    """
+    from src.federated.homomorphic_encryption import encrypt_values_parallel, decrypt_values_parallel
+
+    param_names = [name for name, _ in global_model.named_parameters()]
+    param_shapes = [p.shape for _, p in global_model.named_parameters()]
+    param_numels = [p.numel() for _, p in global_model.named_parameters()]
+    total_size = sum(client_sizes)
+
+    proxy_manager.reset_all_proxies()
+
+    timing = {"encrypt_seconds": [], "proxy_aggregate_seconds": None, "decrypt_seconds": None}
+    for client_model, n_k, cid in zip(client_models, client_sizes, client_ids):
+        client_params = dict(client_model.named_parameters())
+        flat = torch.cat([client_params[name].detach().flatten() for name in param_names]).double()
+        flat_scaled = (flat * n_k).tolist()
+
+        t0 = time.time()
+        enc_scaled = encrypt_values_parallel(flat_scaled, he.public_key, n_workers=he_workers)
+        timing["encrypt_seconds"].append(time.time() - t0)
+
+        proxy = proxy_manager.get_proxy_for_client(cid)
+        proxy.receive_encrypted_gradient(cid, enc_scaled)
+
+    t0 = time.time()
+    agg_cipher = proxy_manager.aggregate_all_proxies()
+    timing["proxy_aggregate_seconds"] = time.time() - t0
 
     t0 = time.time()
     decrypted_sum = decrypt_values_parallel(agg_cipher, he.private_key, n_workers=he_workers)
@@ -681,6 +753,8 @@ def run_federated_training(args):
             'clip_norm': args.clip_norm if args.dp else None,
             'he_enabled': args.he,
             'he_key_size': args.he_key_size if args.he else None,
+            'secure_agg_enabled': args.secure_agg,
+            'num_proxies': args.num_proxies if args.secure_agg else None,
             'num_features': num_features,
             'total_params': total_params,
         }
@@ -716,6 +790,17 @@ def run_federated_training(args):
                   f"a real, measured compute/security tradeoff, not a hidden shortcut).")
         he = PaillierEncryption(key_size=args.he_key_size)
         print(f"[HE] Keypair ready.\n")
+
+    # Secure Aggregation: one proxy topology for the whole run, reused
+    # (and cleared) every round - a real deployment wouldn't re-assign
+    # clients to proxies mid-experiment either.
+    proxy_manager = None
+    if args.secure_agg:
+        from src.federated.proxy_server import ProxyServerManager
+        print(f"[SecureAgg] Setting up {args.num_proxies} proxy server(s) for "
+              f"{args.clients} clients (round-robin assignment)...")
+        proxy_manager = ProxyServerManager(args.num_proxies, args.clients, he)
+        print()
 
     start_time = time.time()
     
@@ -842,10 +927,22 @@ def run_federated_training(args):
         # Aggregate client models → global model. With --he, this happens
         # under Paillier homomorphic encryption: the server never sees any
         # individual client's update in plaintext, only the decrypted
-        # aggregate (see federated_aggregate_he's docstring for the real,
-        # measured timing cost of this).
+        # aggregate. With --secure-agg on top, that encrypted aggregation
+        # is additionally routed through a tiered proxy topology (see
+        # federated_aggregate_he / federated_aggregate_secure docstrings
+        # for the real, measured timing cost of each).
         he_timing = None
-        if he is not None:
+        if proxy_manager is not None:
+            global_model, he_timing = federated_aggregate_secure(
+                global_model, client_models, client_sizes, selected_clients,
+                he, proxy_manager, he_workers=args.he_workers
+            )
+            print(f"  [SecureAgg] encrypted {len(client_models)} client update(s) "
+                  f"({sum(he_timing['encrypt_seconds']):.1f}s total) across "
+                  f"{args.num_proxies} proxies ({he_timing['proxy_aggregate_seconds']:.2f}s "
+                  f"proxy aggregation), decrypted final aggregate "
+                  f"({he_timing['decrypt_seconds']:.1f}s)")
+        elif he is not None:
             global_model, he_timing = federated_aggregate_he(
                 global_model, client_models, client_sizes, he, he_workers=args.he_workers
             )
@@ -884,6 +981,8 @@ def run_federated_training(args):
         if he_timing is not None:
             global_metrics['he_encrypt_seconds'] = he_timing['encrypt_seconds']
             global_metrics['he_decrypt_seconds'] = he_timing['decrypt_seconds']
+            if 'proxy_aggregate_seconds' in he_timing:
+                global_metrics['he_proxy_aggregate_seconds'] = he_timing['proxy_aggregate_seconds']
         history['global_metrics'].append(global_metrics)
         history['client_metrics'].append(round_client_metrics)
     
@@ -1014,6 +1113,15 @@ def main():
                             'src/federated/homomorphic_encryption.py)')
     parser.add_argument('--he-workers', type=int, default=None,
                        help='Parallel workers for HE encrypt/decrypt (default: os.cpu_count())')
+    parser.add_argument('--secure-agg', action='store_true',
+                       help='Route HE-encrypted updates through a tiered client -> proxy -> '
+                            'server topology (src/federated/proxy_server.py) instead of '
+                            'client -> server directly - requires --he. No single proxy sees '
+                            'every client, and the global server never sees a per-proxy '
+                            'partial sum in plaintext either, only the final total.')
+    parser.add_argument('--num-proxies', type=int, default=2,
+                       help='Number of proxy servers for --secure-agg (clients are assigned '
+                            'round-robin via client_id %% num_proxies)')
 
     parser.add_argument('--exclude-clients', type=str, default='',
                        help='Comma-separated client ids to exclude entirely '
@@ -1031,6 +1139,10 @@ def main():
                             'precision); lower values are a tunable middle ground')
 
     args = parser.parse_args()
+
+    if args.secure_agg and not args.he:
+        parser.error('--secure-agg requires --he (secure aggregation routes HE-encrypted '
+                      'updates through proxies; without --he there is nothing to route)')
 
     np.random.seed(42)
     torch.manual_seed(42)

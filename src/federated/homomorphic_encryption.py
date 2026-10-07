@@ -406,31 +406,31 @@ if __name__ == "__main__":
     
     # Initialize encryption
     he = PaillierEncryption(key_size=512)
-    print(f"✅ Generated key pair (n={he.public_key['n']})")
+    print(f"Generated key pair (n={he.public_key['n']})")
     
     # Test basic encryption/decryption
     m1, m2 = 5.5, 3.2
     c1 = he.encrypt(m1)
     c2 = he.encrypt(m2)
-    print(f"\n✅ Encrypted {m1} and {m2}")
+    print(f"\nEncrypted {m1} and {m2}")
     
     # Test homomorphic addition
     c_sum = he.add_encrypted(c1, c2)
     m_sum = he.decrypt(c_sum)
-    print(f"✅ Homomorphic addition: {m1} + {m2} = {m_sum:.2f} (expected: {m1 + m2:.2f})")
+    print(f"Homomorphic addition: {m1} + {m2} = {m_sum:.2f} (expected: {m1 + m2:.2f})")
     
     # Test tensor encryption
     tensor = torch.randn(3, 4)
-    print(f"\n✅ Original tensor:\n{tensor}")
+    print(f"\nOriginal tensor:\n{tensor}")
     
     encrypted_tensor = he.encrypt_tensor(tensor)
-    print(f"✅ Encrypted tensor (first 3 values): {encrypted_tensor[:3]}")
+    print(f"Encrypted tensor (first 3 values): {encrypted_tensor[:3]}")
     
     decrypted_tensor = he.decrypt_tensor(encrypted_tensor, tensor.shape)
-    print(f"✅ Decrypted tensor:\n{decrypted_tensor}")
+    print(f"Decrypted tensor:\n{decrypted_tensor}")
     
     # Test secure aggregation
-    print("\n✅ Testing Secure Aggregation...")
+    print("\nTesting Secure Aggregation...")
     aggregator = SecureAggregator(he)
     
     # Simulate 3 clients
@@ -446,8 +446,8 @@ if __name__ == "__main__":
     
     # Verify
     expected_sum = sum(client_tensors)
-    print(f"\n✅ Aggregated (encrypted then decrypted):\n{aggregated_decrypted}")
-    print(f"✅ Expected sum:\n{expected_sum}")
-    print(f"✅ Difference: {torch.abs(aggregated_decrypted - expected_sum).max():.6f}")
+    print(f"\nAggregated (encrypted then decrypted):\n{aggregated_decrypted}")
+    print(f"Expected sum:\n{expected_sum}")
+    print(f"Difference: {torch.abs(aggregated_decrypted - expected_sum).max():.6f}")
     
-    print("\n🎉 All tests passed!")
+    print("\nAll tests passed!")
