@@ -216,13 +216,68 @@ vs `--epsilon 100 --rounds 10` (see `results/synthetic_paysim/` for a saved
 run, and `experiments/run_model_comparison.py`'s `[D]` baseline for the
 side-by-side vs. no-DP).
 
-### Combined privacy guarantee (design intent, not what currently runs)
+### Multi-round DP composition accounting - and a correction to every ε above
+
+Every ε table in this document (including the one above) is a **per-round**
+budget for the server's one Gaussian noise draw that round. Across R rounds,
+the true cumulative privacy loss is larger than any single round's ε -
+`src/federated/dp_accounting.py` (`run_training.py --dp`, always on when DP
+is enabled) now tracks this via Rényi DP (RDP) composition (Mironov, 2017),
+the standard tight method for composing Gaussian mechanisms.
+
+Building and validating it surfaced something more significant than "no
+cumulative total existed": **the per-round ε labels above were themselves
+understated.** The classical Gaussian-mechanism calibration formula this
+project uses everywhere (`σ = sensitivity·√(2ln(1.25/δ))/ε`, Dwork & Roth's
+textbook bound) is only mathematically proven tight for **ε≤1**. Verified
+numerically across this project's actual range:
+
+| Nominal ε (the label used everywhere else) | True RDP-tight single-round ε | Ratio |
+|---|---|---|
+| 0.1 | 0.099 | 0.99 |
+| 1.0 | 1.01 | 1.01 |
+| 10.0 | 12.0 | 1.20 |
+| 50.0 | 102.9 | 2.06 |
+| **100.0 (project default)** | **313.19** | **3.13** |
+
+Within the formula's proven regime (ε≤1) it's tight (ratio≈1). This project
+uses ε=50-2000 out of necessity (Gaussian noise scales with `σ√d` against a
+45K-parameter model - see above), which is exactly the regime where the
+classical formula understates the true cost. This isn't a new bug introduced
+by adding composition accounting - it's a pre-existing property of every ε
+this project has ever quoted, only now measurable because RDP accounting
+(which has no ε≤1 restriction) gives an independent, rigorous way to check.
+
+**Real cumulative numbers from an actual 15-round run**
+(`results/paysim_real_dp_accounting/`, ε=100 nominal, real PaySim data, 9
+clients):
+
+| Quantity | Value |
+|---|---|
+| Nominal label × 15 rounds (the wrong "just multiply" approach) | 1,500.0 |
+| True per-round ε (313.19) × 15 rounds (correct loose baseline) | 4,697.8 |
+| **RDP-composed total (the tight, correct answer)** | **3,629.9** |
+
+RDP composition is doing real, measurable work - 3,629.9 is ~23% tighter
+than naively summing the *true* per-round cost (4,697.8) - but the honest
+total is still ~2.4x what the commonly quoted "ε=100" label alone implies.
+Reported in full: this project's actual cumulative privacy budget over a
+real training run is in the thousands, not the hundreds. `dp_accounting.py`
+exposes all three numbers distinctly (`epsilon_naive_total_nominal`,
+`epsilon_naive_total_true`, `epsilon_rdp_total`) specifically so they are
+never conflated - see the module's own docstring for the full derivation.
+
+### Combined privacy guarantee
 
 DP gives a *statistical* privacy guarantee (bounded by ε, δ). HE gives a
-*cryptographic* guarantee on top — the server can't read an update at all
-before aggregation. Together they'd be defense-in-depth. As-implemented,
-only the DP layer is exercised in training; HE remains a correct but
-disconnected reference implementation (see the layers table above).
+*cryptographic* guarantee on top - the server can't read an individual
+update at all before aggregation. Both are now wired into the live training
+loop (`--dp`, `--he`, independently toggleable, composable together) -
+defense-in-depth, not just design intent. Secure Aggregation's tiered
+proxy-server topology (`--secure-agg`, requires `--he`) adds a third,
+collusion-resistance layer on top of HE. See the privacy/security layers
+table at the top of this document for the current real-vs-reference status
+of every layer.
 
 Relevant reading: Dwork & Roth (2014) *Algorithmic Foundations of Differential
 Privacy*; Abadi et al. (2016) *Deep Learning with Differential Privacy*; Paillier

@@ -802,6 +802,16 @@ def run_federated_training(args):
         proxy_manager = ProxyServerManager(args.num_proxies, args.clients, he)
         print()
 
+    # Multi-round DP composition accounting (Rényi DP): every epsilon
+    # reported elsewhere in this project is a PER-ROUND budget for the
+    # server's one Gaussian noise draw that round - this tracks the real
+    # cumulative privacy cost across all rounds actually run, via RDP
+    # composition (tight for the Gaussian mechanism), not just a naive sum.
+    dp_accountant = None
+    if args.dp:
+        from src.federated.dp_accounting import DPFedAvgAccountant, gaussian_rdp_single_round_eps
+        dp_accountant = DPFedAvgAccountant(delta=args.delta)
+
     start_time = time.time()
     
     for round_num in range(1, args.rounds + 1):
@@ -955,12 +965,21 @@ def run_federated_training(args):
         # DP-FedAvg: server adds ONE noise draw for the round, to the
         # aggregate, sized by the largest single client's averaging weight.
         dp_epsilon = 0.0
+        dp_cumulative = None
         if dp is not None:
             max_weight = max(client_sizes) / sum(client_sizes)
             sigma = add_server_noise(global_model, dp, max_weight)
             dp_epsilon = dp.compute_epsilon()
+            sensitivity = max_weight * dp.max_norm
+            dp_accountant.add_round(sigma, sensitivity, dp_epsilon)
+            dp_cumulative = dp_accountant.cumulative()
             print(f"  [DP] server noise added: sigma={sigma:.4f}, "
-                  f"epsilon spent this round={dp_epsilon:.2f}")
+                  f"epsilon spent this round={dp_epsilon:.2f} "
+                  f"(RDP-tight single-round eps={gaussian_rdp_single_round_eps(sigma, sensitivity, args.delta):.2f})")
+            print(f"  [DP] cumulative after {dp_cumulative['num_rounds']} round(s): "
+                  f"nominal_naive_sum={dp_cumulative['epsilon_naive_total_nominal']:.1f}, "
+                  f"true_naive_sum={dp_cumulative['epsilon_naive_total_true']:.1f}, "
+                  f"RDP-composed={dp_cumulative['epsilon_rdp_total']:.1f}")
 
         # Evaluate global model on combined test set
         global_metrics = evaluate_model(global_model, test_loader, config, device)
@@ -978,6 +997,11 @@ def run_federated_training(args):
         # Save history
         history['rounds'].append(round_num)
         global_metrics['dp_epsilon'] = dp_epsilon
+        if dp_cumulative is not None:
+            global_metrics['dp_epsilon_true_single_round'] = dp_cumulative['epsilon_true_single_round']
+            global_metrics['dp_epsilon_nominal_naive_cumulative'] = dp_cumulative['epsilon_naive_total_nominal']
+            global_metrics['dp_epsilon_true_naive_cumulative'] = dp_cumulative['epsilon_naive_total_true']
+            global_metrics['dp_epsilon_rdp_cumulative'] = dp_cumulative['epsilon_rdp_total']
         if he_timing is not None:
             global_metrics['he_encrypt_seconds'] = he_timing['encrypt_seconds']
             global_metrics['he_decrypt_seconds'] = he_timing['decrypt_seconds']

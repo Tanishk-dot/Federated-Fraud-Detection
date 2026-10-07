@@ -380,9 +380,22 @@ white-text-on-white on this dark theme, making 9 of 10 options invisible.
   production-secure; see ARCHITECTURE.md); adding the proxy tier costs almost nothing
   extra (0.33–0.41s for the proxy-level aggregation itself, since homomorphic addition
   is plain modular multiplication, not exponentiation).
-- All reported `ε` values are **per-round** DP-FedAvg budgets; no formal multi-round
-  composition accountant (e.g., Rényi DP) has been applied, so the true cumulative
-  privacy loss across a full run is larger than any single `ε` quoted above.
+- **Multi-round DP composition accounting is now implemented** (`src/federated/dp_accounting.py`,
+  `run_training.py --dp`) — and building it surfaced a more significant finding than
+  "no cumulative total existed." Every `ε` quoted above (ε=50, 100, 500, 2000) comes from
+  this project's classical Gaussian-mechanism calibration formula
+  (`σ = sensitivity·√(2ln(1.25/δ))/ε`), which is only mathematically proven tight for
+  **ε≤1**. Verified numerically across the actual range this project uses: at ε=100 (the
+  project default), the *true*, rigorously-computed single-round privacy loss — via Rényi
+  DP, which has no such restriction — is **ε≈313, not 100** (a 3.13x gap; the gap is
+  negligible at ε≤1 and grows with ε above that). A real 15-round training run
+  (`results/paysim_real_dp_accounting/`) shows the full picture: naively multiplying the
+  *label* by rounds gives 1500; naively summing the *true* per-round cost gives 4697.8;
+  proper RDP composition gives **3629.9** — tighter than the true-naive sum (confirming
+  composition accounting does real work, saving ~23%), but still ~2.4x what the commonly
+  quoted "ε=100" label alone would suggest. Reported in full, not rounded up: this
+  project's actual cumulative privacy budget over a real training run is in the
+  thousands, not the hundreds.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full, unrounded accounting.
 
