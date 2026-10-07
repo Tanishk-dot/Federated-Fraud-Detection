@@ -34,6 +34,34 @@ interface ComparisonData {
   models: Record<string, ModelResult>
 }
 
+interface RealRunMetrics {
+  accuracy: number
+  precision: number
+  recall: number
+  f1: number
+  roc_auc: number
+  fpr: number | null
+  num_rounds: number
+}
+
+interface RealDataResults {
+  dataset: string
+  note: string
+  fraud_starvation_fix: string
+  honest_caveat: string
+  runs: {
+    baseline: RealRunMetrics | null
+    best: RealRunMetrics | null
+    longer_oversampled: RealRunMetrics | null
+  }
+}
+
+const REAL_RUN_STYLE: Record<string, { label: string; color: string }> = {
+  baseline: { label: "Baseline (no oversampling)", color: "#8b8a83" },
+  best: { label: "Best (oversample R=0.02, 8 rounds)", color: "#3987e5" },
+  longer_oversampled: { label: "Longer run (R=0.02, 15 rounds)", color: "#d97757" },
+}
+
 const PRIVACY_BADGE: Record<string, { status: "critical" | "warning" | "good"; label: string }> = {
   none: { status: "critical", label: "No privacy" },
   federated_only: { status: "warning", label: "Federated only" },
@@ -77,6 +105,8 @@ const RADAR_AXES = ["Accuracy", "F1", "ROC-AUC", "Data locality", "DP guarantee"
 export default function Comparison() {
   const [data, setData] = useState<ComparisonData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [realData, setRealData] = useState<RealDataResults | null>(null)
+  const [realError, setRealError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/comparison")
@@ -86,7 +116,31 @@ export default function Comparison() {
       })
       .then(setData)
       .catch((e) => setError(String(e)))
+
+    fetch("/api/real-data-results")
+      .then((r) => {
+        if (!r.ok) return r.text().then((t) => { throw new Error(t) })
+        return r.json()
+      })
+      .then(setRealData)
+      .catch((e) => setRealError(String(e)))
   }, [])
+
+  const realChartData = realData
+    ? (["baseline", "best", "longer_oversampled"] as const)
+        .filter((k) => realData.runs[k])
+        .map((k) => {
+          const m = realData.runs[k]!
+          return {
+            key: k,
+            name: REAL_RUN_STYLE[k].label,
+            Precision: +(m.precision * 100).toFixed(1),
+            Recall: +(m.recall * 100).toFixed(1),
+            F1: +(m.f1 * 100).toFixed(1),
+            "ROC-AUC": +(m.roc_auc * 100).toFixed(1),
+          }
+        })
+    : []
 
   const chartData = data
     ? Object.values(data.models).map((m) => ({
@@ -307,6 +361,86 @@ export default function Comparison() {
           </Card></Reveal>
         </>
       )}
+
+      <Reveal delay={0.12}><Card className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-bold text-lg">Real PaySim data — honest results</h3>
+          <Badge status="warning">Real data, not synthetic</Badge>
+        </div>
+        <p className="text-xs text-ink-secondary mb-4">
+          Everything above this card is on the schema-matched <strong>synthetic</strong> stand-in
+          (~6% fraud rate) — a pipeline-correctness check. This card is the real PaySim dataset
+          (~0.1–0.3% fraud rate, ~45x more imbalanced), read live from each run's own saved
+          training history below.
+        </p>
+
+        {realError && (
+          <p className="text-xs text-status-warning">
+            No real-data results yet — run <span className="font-mono">run_training.py --dataset
+            paysim_real</span> (see README.md "Real PaySim results").
+          </p>
+        )}
+
+        {realData && (
+          <>
+            <p className="text-xs text-ink-secondary mb-4">{realData.note}</p>
+
+            <Reveal className="h-64 mb-6">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={realChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#8b8a83" }} axisLine={{ stroke: "rgba(255,255,255,0.1)" }} tickLine={false} interval={0} angle={-8} textAnchor="end" height={55} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8b8a83" }} axisLine={false} tickLine={false} unit="%" />
+                  <Tooltip contentStyle={{ background: "#1a1a19", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="Precision" fill="#8b8a83" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Recall" fill="#199e70" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="F1" fill="#3987e5" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ROC-AUC" fill="#9085e9" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Reveal>
+
+            <div className="grid md:grid-cols-3 gap-4 mb-6">
+              {(["baseline", "best", "longer_oversampled"] as const)
+                .filter((k) => realData.runs[k])
+                .map((k) => {
+                  const m = realData.runs[k]!
+                  const style = REAL_RUN_STYLE[k]
+                  return (
+                    <div key={k} className="rounded-lg border border-white/8 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="h-2 w-2 rounded-full" style={{ background: style.color }} />
+                        <span className="text-xs font-semibold text-ink-primary">{style.label}</span>
+                      </div>
+                      <div className="text-[10px] text-ink-muted mb-3">{m.num_rounds} rounds</div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        {[
+                          ["Precision", m.precision], ["Recall", m.recall],
+                          ["F1", m.f1], ["ROC-AUC", m.roc_auc],
+                        ].map(([label, val]) => (
+                          <div key={label as string}>
+                            <div className="text-[10px] text-ink-muted uppercase">{label}</div>
+                            <div className="font-bold tabular-nums text-sm">{((val as number) * 100).toFixed(1)}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+
+            <div className="rounded-lg bg-white/[0.03] p-4 mb-3">
+              <div className="text-xs font-semibold text-ink-primary mb-1">The fraud-starvation bug and its fix</div>
+              <p className="text-xs text-ink-secondary">{realData.fraud_starvation_fix}</p>
+            </div>
+            <div className="rounded-lg bg-white/[0.03] p-4">
+              <div className="text-xs font-semibold text-status-warning mb-1">Honest caveat — more training made it worse</div>
+              <p className="text-xs text-ink-secondary">{realData.honest_caveat}</p>
+            </div>
+          </>
+        )}
+      </Card></Reveal>
     </div>
   )
 }

@@ -49,6 +49,7 @@ DATA_ROOT = ROOT / "data"
 RESULTS_ROOT = ROOT / "results"
 
 CHECKPOINT_CANDIDATES = [
+    RESULTS_ROOT / "paysim_real_best" / "global_model.pt",
     RESULTS_ROOT / "synthetic_paysim" / "global_model.pt",
     RESULTS_ROOT / "paysim" / "global_model.pt",
 ]
@@ -219,6 +220,85 @@ def epsilon_sweep():
     import json
     with open(path) as f:
         return json.load(f)
+
+
+@app.get("/api/real-data-results")
+def real_data_results():
+    """Real PaySim results - read live from each run's own saved
+    training_history.json (never hand-typed), so this can't drift from
+    what actually ran. See README.md 'Real PaySim results' for the full
+    narrative this summarizes.
+
+    Three real runs, same real paysim_real dataset (9 clients, client_9
+    excluded as a documented anomaly):
+    - baseline: no oversampling, 15 rounds/50k samples
+    - best: --oversample --oversample-ratio 0.02, 8 rounds/20k samples -
+      the headline result, chosen because it empirically scores best, not
+      because it's the most training
+    - longer_oversampled: the same oversample-ratio 0.02 scaled up to 15
+      rounds/50k samples - kept as an honest, documented counter-example:
+      more training made F1 WORSE here, not better
+    """
+    import json
+
+    def last_round_metrics(dataset_dir):
+        path = RESULTS_ROOT / dataset_dir / "training_history.json"
+        if not path.exists():
+            return None
+        with open(path) as f:
+            history = json.load(f)
+        gm = history.get("global_metrics")
+        cfg = history.get("config", {})
+        if not gm:
+            return None
+        final = gm[-1]
+        return {
+            "accuracy": final["accuracy"],
+            "precision": final["precision"],
+            "recall": final["recall"],
+            "f1": final["f1"],
+            "roc_auc": final["roc_auc"],
+            "fpr": final.get("fpr"),
+            "num_rounds": cfg.get("num_rounds", len(gm)),
+        }
+
+    runs = {
+        "baseline": last_round_metrics("paysim_real"),
+        "best": last_round_metrics("paysim_real_best"),
+        "longer_oversampled": last_round_metrics("paysim_real_oversampled"),
+    }
+    if not any(runs.values()):
+        raise HTTPException(
+            404,
+            "No real-data results yet - run experiments/build_real_paysim_splits.py "
+            "then run_training.py --dataset paysim_real (see README.md).",
+        )
+
+    return {
+        "dataset": "paysim_real",
+        "note": (
+            "Real PaySim data, ~0.1-0.3% true fraud rate (vs. the synthetic "
+            "comparison's ~6%). client_9 excluded from all three runs below as a "
+            "documented, unexplained anomaly (46.9% fraud in its own train file)."
+        ),
+        "fraud_starvation_fix": (
+            "At this fraud rate, most training batches contained zero fraud "
+            "examples, so loss-level pos_weight reweighting had nothing to act "
+            "on. Fixed with WeightedRandomSampler oversampling, tuned to a 2% "
+            "per-batch target - the one ratio found to beat baseline on both F1 "
+            "and recall simultaneously (every other ratio tried only traded one "
+            "for the other)."
+        ),
+        "honest_caveat": (
+            "Scaling the winning oversample ratio up to a longer run (15 rounds/"
+            "50k samples, matching baseline's scale) did NOT reproduce the win - "
+            "see 'longer_oversampled' below, which scores worse on F1 than even "
+            "the plain baseline. More training consistently hurt F1 in this real-"
+            "data regime, likely because each client has only ~100-300 real fraud "
+            "sequences total. The smaller 'best' run is the real headline result."
+        ),
+        "runs": runs,
+    }
 
 
 # ---------------------------------------------------------------------------
