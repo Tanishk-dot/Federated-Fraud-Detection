@@ -14,7 +14,7 @@ const PIPELINE: { stage: string; detail: string; note?: string }[] = [
 const PRIVACY_STACK: { label: string; status: "good" | "warning" | "neutral"; note: string }[] = [
   { label: "Data locality", status: "good", note: "real" },
   { label: "Client-level DP-FedAvg", status: "good", note: "real" },
-  { label: "Homomorphic encryption", status: "warning", note: "implemented, not wired" },
+  { label: "Homomorphic encryption", status: "good", note: "real (--he)" },
   { label: "TLS / mutual auth", status: "neutral", note: "n/a (single-process sim)" },
 ]
 

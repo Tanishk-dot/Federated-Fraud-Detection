@@ -9,8 +9,8 @@ import { Reveal, Stagger, StaggerItem } from "../components/motion"
 const LAYERS = [
   { name: "Data locality", guarantee: "Raw data never leaves clients", status: "good", label: "real" },
   { name: "Differential Privacy", guarantee: "Client's whole update is bounded + noised", status: "good", label: "real" },
-  { name: "Homomorphic Encryption", guarantee: "Server can't see individual updates", status: "warning", label: "implemented, not wired into training" },
-  { name: "Secure Aggregation (proxies)", guarantee: "No single party sees all updates", status: "warning", label: "implemented, not wired into training" },
+  { name: "Homomorphic Encryption", guarantee: "Server can't see individual updates", status: "good", label: "real (run_training.py --he)" },
+  { name: "Secure Aggregation (proxies)", guarantee: "No single party sees all updates", status: "good", label: "real (run_training.py --secure-agg)" },
   { name: "TLS 1.3", guarantee: "Transport security", status: "neutral", label: "n/a — single-process simulation" },
   { name: "Mutual Authentication", guarantee: "Identity verification", status: "neutral", label: "n/a — single-process simulation" },
 ] as const
