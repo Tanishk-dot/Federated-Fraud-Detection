@@ -13,6 +13,7 @@ Run:
 
 import difflib
 import io
+import os
 import sys
 import threading
 import time
@@ -38,9 +39,19 @@ from src.models.temporal_graph_transformer import TemporalGraphTransformer  # no
 import generate_synthetic_paysim as synth_gen  # noqa: E402
 
 app = FastAPI(title="Fraud Detection API")
+# ALLOWED_ORIGINS env var (comma-separated) lets a deployed instance allow
+# its real frontend domain without a code change; defaults to local dev
+# only. The Vercel deploy itself proxies /api/* same-origin (see
+# frontend/vercel.json), so this mainly matters for direct cross-origin
+# calls to the backend's own domain (testing, or a future non-proxied
+# frontend), not the normal browser path.
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173"
+_allowed_origins = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,0 +1,21 @@
+# Lean, deploy-only dependency set for backend/main.py - NOT the same as
+# the repo root's requirements.txt, which also covers training/research
+# tooling (torch-geometric, flwr, grpcio, matplotlib, streamlit, opacus,
+# ...) that the live API never imports. Verified by tracing every import
+# backend/main.py actually pulls in, transitively through run_training.py
+# and src/federated/* - torch_geometric is optional even in graph_encoder.py
+# (try/except import), and the deployed model uses SimpleGraphEncoder,
+# which never touches it.
+#
+# CPU-only torch: this backend only ever runs inference + small live
+# demo training on a 45K-param model, never needs a GPU, and the CUDA
+# wheel is multiple GB larger for no benefit on a hosted free tier.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
