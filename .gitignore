@@ -43,3 +43,13 @@ datasets_capstone/
 .vscode/
 .idea/
 Thumbs.db
+
+# Explicit exceptions: small, real artifacts a deployed backend actually
+# needs to serve anything (checkpoints + the metrics history the live-
+# results API reads + the small synthetic dataset used for the public
+# live-Train demo). Kept minimal and specific rather than untracking the
+# large raw real-PaySim tensor cache (data/paysim_real/*.pt, ~780MB) -
+# that data isn't needed to serve precomputed real-data results.
+!results/*/global_model.pt
+!results/*/training_history.json
+!data/synthetic_paysim/**/*.pt
