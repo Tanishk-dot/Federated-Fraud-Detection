@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://fraud-detection-backend.onrender.com/api/:path*"
+      "destination": "https://fraud-detection-backend-dh9q.onrender.com/api/:path*"
     }
   ]
 }
