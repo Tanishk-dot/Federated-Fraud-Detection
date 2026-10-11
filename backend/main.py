@@ -258,6 +258,7 @@ def real_data_results():
             "recall": final["recall"],
             "f1": final["f1"],
             "roc_auc": final["roc_auc"],
+            "pr_auc": final.get("pr_auc"),
             "fpr": final.get("fpr"),
             "num_rounds": cfg.get("num_rounds", len(gm)),
         }

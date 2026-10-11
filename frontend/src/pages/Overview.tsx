@@ -92,14 +92,26 @@ export default function Overview() {
       </div>
 
       {m && (
-        <div className="mb-14">
+        <div className="mb-3">
           <MetricRow items={[
             { label: "Accuracy", value: `${(m.accuracy * 100).toFixed(1)}%` },
-            { label: "F1 score", value: `${(m.f1 * 100).toFixed(1)}%` },
+            { label: "PR-AUC", value: `${((m.pr_auc ?? 0) * 100).toFixed(1)}%`, sub: "the right metric at this imbalance" },
             { label: "ROC-AUC", value: `${(m.roc_auc * 100).toFixed(1)}%` },
             { label: "Recall", value: `${(m.recall * 100).toFixed(1)}%` },
+            { label: "F1 score", value: `${(m.f1 * 100).toFixed(1)}%` },
           ]} />
         </div>
+      )}
+
+      {m && (
+        <p className="text-xs text-ink-muted mb-14 max-w-3xl">
+          F1 and Recall read lower than typical demo numbers because real fraud is
+          only ~0.1-0.3% of transactions here, not a balanced 50/50 split — PR-AUC
+          (precision-recall AUC) is the standard metric for judging a classifier at
+          this level of imbalance, and it's reported above rather than left out. See{" "}
+          <Link to="/architecture" className="text-series-blue underline underline-offset-2">Architecture</Link>{" "}
+          for the full picture.
+        </p>
       )}
 
       {info?.loaded && (

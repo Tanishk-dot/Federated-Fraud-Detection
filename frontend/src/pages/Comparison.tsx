@@ -40,6 +40,7 @@ interface RealRunMetrics {
   recall: number
   f1: number
   roc_auc: number
+  pr_auc: number | null
   fpr: number | null
   num_rounds: number
 }
@@ -134,6 +135,7 @@ export default function Comparison() {
           return {
             key: k,
             name: REAL_RUN_STYLE[k].label,
+            "PR-AUC": +((m.pr_auc ?? 0) * 100).toFixed(1),
             Precision: +(m.precision * 100).toFixed(1),
             Recall: +(m.recall * 100).toFixed(1),
             F1: +(m.f1 * 100).toFixed(1),
@@ -393,13 +395,23 @@ export default function Comparison() {
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8b8a83" }} axisLine={false} tickLine={false} unit="%" />
                   <Tooltip contentStyle={{ background: "#1a1a19", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="PR-AUC" fill="#3987e5" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Precision" fill="#8b8a83" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Recall" fill="#199e70" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="F1" fill="#3987e5" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="F1" fill="#6b6a63" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="ROC-AUC" fill="#9085e9" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Reveal>
+
+            <p className="text-xs text-ink-muted mb-4">
+              <strong className="text-ink-secondary">PR-AUC</strong> is the lead metric here on
+              purpose — it's the standard way to judge a classifier at real PaySim's ~0.1-0.3%
+              fraud rate, unlike accuracy (meaningless at this imbalance) or F1 (threshold-
+              dependent). F1 and Recall are still shown in full below, not hidden — they read
+              lower than a balanced-data demo would show because the imbalance here is real,
+              not because the model is worse.
+            </p>
 
             <div className="grid md:grid-cols-3 gap-4 mb-6">
               {(["baseline", "best", "longer_oversampled"] as const)
@@ -414,6 +426,12 @@ export default function Comparison() {
                         <span className="text-xs font-semibold text-ink-primary">{style.label}</span>
                       </div>
                       <div className="text-[10px] text-ink-muted mb-3">{m.num_rounds} rounds</div>
+                      {m.pr_auc != null && (
+                        <div className="mb-3 pb-3 border-b border-white/8">
+                          <div className="text-[10px] text-ink-muted uppercase">PR-AUC</div>
+                          <div className="font-bold tabular-nums text-xl text-series-blue">{(m.pr_auc * 100).toFixed(1)}%</div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2 text-center">
                         {[
                           ["Precision", m.precision], ["Recall", m.recall],
