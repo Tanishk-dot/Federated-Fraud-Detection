@@ -68,9 +68,11 @@ export default function Overview() {
             <SplitText text="sees your raw data." delay={0.26} />
           </h1>
           <p className="text-ink-secondary mt-5 max-w-xl text-[15px] leading-relaxed">
-            A Temporal Graph Transformer with contrastive learning, trained across simulated banks
-            with FedProx and client-level differential privacy — every number on this page comes
-            from an actual trained checkpoint, not a projection.
+            A Temporal Graph Transformer with contrastive learning, trained with FedProx across
+            simulated banks — this system also supports client-level differential privacy,
+            Homomorphic Encryption, and Secure Aggregation (see Architecture for what's active on
+            any given checkpoint). Every number on this page comes from an actual trained
+            checkpoint, not a projection.
           </p>
           <div className="flex items-center gap-3 mt-7">
             <Button to="/test-data" variant="primary">Test your data →</Button>
@@ -120,7 +122,11 @@ export default function Overview() {
             From <span className="font-mono">{info.checkpoint}</span> — {info.num_rounds} real training
             rounds, {info.checkpoint?.includes("paysim_real")
               ? "on real PaySim data (1.9M real transactions, ~0.1-0.3% fraud)"
-              : "on rule-based synthetic data (same schema as PaySim)"}. See{" "}
+              : "on rule-based synthetic data (same schema as PaySim)"}. {m && (
+              (m.dp_epsilon ?? 0) > 0
+                ? `Differential privacy was ON for this run (ε=${m.dp_epsilon}).`
+                : "Differential privacy was OFF for this specific checkpoint — these numbers are not a DP result. DP's real, measured cost is demonstrated separately: see the synthetic-data comparison below, or the paper's real-data privacy-utility sweep."
+            )} See{" "}
             <Link to="/architecture" className="text-series-blue underline underline-offset-2">Architecture</Link>{" "}
             for what that means for these numbers, or{" "}
             <Link to="/comparison" className="text-series-blue underline underline-offset-2">Model Comparison</Link>{" "}

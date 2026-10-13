@@ -43,6 +43,8 @@ interface RealRunMetrics {
   pr_auc: number | null
   fpr: number | null
   num_rounds: number
+  dp_enabled: boolean
+  dp_epsilon: number | null
 }
 
 interface RealDataResults {
@@ -376,6 +378,15 @@ export default function Comparison() {
           training history below.
         </p>
 
+        {realData && !realData.runs.best?.dp_enabled && (
+          <p className="text-xs text-status-warning mb-4">
+            None of the three runs below have differential privacy enabled — they isolate the
+            real-data fraud-starvation fix (oversampling) on its own. DP's real, measured cost on
+            this same real dataset is reported separately in the paper's privacy-utility sweep
+            (ε=1 destroys the model, plateaus by ε≈50), not shown live here.
+          </p>
+        )}
+
         {realError && (
           <p className="text-xs text-status-warning">
             No real-data results yet — run <span className="font-mono">run_training.py --dataset
@@ -425,7 +436,14 @@ export default function Comparison() {
                         <span className="h-2 w-2 rounded-full" style={{ background: style.color }} />
                         <span className="text-xs font-semibold text-ink-primary">{style.label}</span>
                       </div>
-                      <div className="text-[10px] text-ink-muted mb-3">{m.num_rounds} rounds</div>
+                      <div className="text-[10px] text-ink-muted mb-3">
+                        {m.num_rounds} rounds ·{" "}
+                        {m.dp_enabled ? (
+                          <span className="text-status-good">DP on (ε={m.dp_epsilon})</span>
+                        ) : (
+                          <span className="text-status-warning">DP off</span>
+                        )}
+                      </div>
                       {m.pr_auc != null && (
                         <div className="mb-3 pb-3 border-b border-white/8">
                           <div className="text-[10px] text-ink-muted uppercase">PR-AUC</div>

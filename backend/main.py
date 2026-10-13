@@ -272,6 +272,8 @@ def real_data_results():
             "pr_auc": final.get("pr_auc"),
             "fpr": final.get("fpr"),
             "num_rounds": cfg.get("num_rounds", len(gm)),
+            "dp_enabled": bool(cfg.get("dp_enabled")),
+            "dp_epsilon": cfg.get("epsilon"),
         }
 
     runs = {
