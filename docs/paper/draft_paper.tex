@@ -37,7 +37,7 @@
 % in a large blank margin, and costs roughly 2x the page count for the
 % same content. Overridden here to standard A4 proportions since this
 % venue reviews/prints at normal page size, not Springer's own trim size.
-\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage[a4paper,margin=2cm]{geometry}
 % svproc's abstract environment insets 1cm on each side (list leftmargin/
 % rightmargin), matching Springer's small native column - against the
 % now-widened body text width that reads as visually disconnected rather
@@ -215,63 +215,51 @@ separation between fraud and legitimate transaction embeddings rather
 than between augmented views of the same image.
 
 \textbf{Federated fraud detection systems in the literature.} A growing
-body of work applies FL specifically to financial fraud and
-financial-crime detection, under a range of architectures and privacy
-mechanisms. Zhang et al.~\cite{zhang2023hyfl} address the case where
-transaction-level and account-level features are held by different
-institutions, combining horizontal and vertical FL into a hybrid
-framework (HyFL) evaluated on a real $\approx$3M-transaction SWIFT
-dataset at 1:783 imbalance; Suzumura et al.~\cite{suzumura2019fedgraph}
-instead federate \emph{graph} features across institutions for
-anti-money-laundering, reporting a $\approx$20\% accuracy improvement
-over isolated local models on the UK FCA TechSprint dataset --
-motivating evidence for exactly the kind of cross-institution graph
-signal our own graph branch is intended for, though not yet wired to
-real entity-linked edges (Section~\ref{sec:graphbranch}). Sun's
-comparative study~\cite{sun2025fedsurvey} benchmarks ANN, Random
-Forest, and CNN clients under FL specifically for fraud, finding RF
-more robust to non-IID data but communication-heavier -- a tradeoff our
-own choice of FedProx (Section~III-B) is one answer to without changing
-the base architecture per client.
+body of work applies FL to financial fraud and financial-crime
+detection under varied architectures and privacy mechanisms. Zhang et
+al.~\cite{zhang2023hyfl} combine horizontal and vertical FL (HyFL) for
+split transaction-/account-level features, evaluated on a real
+$\approx$3M-transaction SWIFT dataset at 1:783 imbalance. Suzumura et
+al.~\cite{suzumura2019fedgraph} federate graph features for
+anti-money-laundering, reporting a $\approx$20\% accuracy gain over
+isolated models on the UK FCA TechSprint dataset -- evidence for the
+cross-institution graph signal our own graph branch targets, though not
+yet wired to real entity-linked edges (Section~\ref{sec:graphbranch}).
+Sun~\cite{sun2025fedsurvey} benchmarks ANN, RF, and CNN clients under
+FL for fraud, finding RF more robust to non-IID data but
+communication-heavier, a tradeoff our FedProx choice (Section~III-B)
+answers without changing the per-client architecture.
 
-A second cluster addresses the transparency gap FL alone doesn't close.
-Awosika et al.~\cite{awosika2024xaifl} and Aljunaid et
-al.~\cite{aljunaid2025xfl} both pair FL with post-hoc explainability
-(SHAP/LIME) so that a federated model's decisions remain auditable to
-analysts despite no institution seeing another's raw data -- a concern
-this paper does not address directly (our contrastive head targets
-novel-pattern separation, not instance-level explanation) but flag as
-complementary future work. Kanamori et al.~\cite{kanamori2022deepprotect}
-report one of the few real-world FL deployments in this space:
-DeepProtect, piloted across five live Japanese banks using additive
-homomorphic encryption for gradient aggregation, detecting fraudulent
-accounts weeks before manual bank processes did -- a real-world existence
-proof for exactly the HE-secured aggregation path this paper wires into
-training in Section~\ref{sec:he}, at smaller (simulated, ten-client)
-scale. Zheng~\cite{zheng2025wgandp} tackles class imbalance directly
-inside the privacy layer, combining adaptive differential privacy with
-WGAN-based synthetic minority generation; our own imbalance fix
-(Section~\ref{sec:realdata}) instead oversamples real examples rather
-than generating synthetic ones, a simpler but real-data-only
-alternative. Tang and Liu~\cite{tang2024sdt} and Abbassi et
-al.~\cite{abbassi2025vaeqlstm} both federate sequence architectures
-(a Transformer-based Structured Data Transformer, and a VAE-QLSTM
-fusion respectively) for transaction-level fraud, supporting this
-paper's own choice of a temporal Transformer branch (Section~III-A) as
-a reasonable federated sequence model for this task. Finally, Han
-Zheng~\cite{hzheng2025fedgat} compares FedGAT-DCNN, FedAvg+CNN, and a
-data-quality-weighted FedAvg-DWA+RF, finding the graph-attention variant
-strongest on imbalanced data -- further, independent support (beyond
-Suzumura et al.) for graph-structured federated fraud models, which our
-own graph branch approximates only partially today.
+A second cluster addresses FL's transparency gap. Awosika et
+al.~\cite{awosika2024xaifl} and Aljunaid et al.~\cite{aljunaid2025xfl}
+pair FL with post-hoc explainability (SHAP/LIME) for auditable
+decisions without raw-data sharing -- complementary to this paper's
+contrastive head, which targets novel-pattern separation rather than
+instance-level explanation. Kanamori et
+al.~\cite{kanamori2022deepprotect} report a rare real-world FL
+deployment, DeepProtect, across five Japanese banks using additive HE
+for gradient aggregation, detecting fraud weeks earlier than manual
+review -- real-world support for the HE-secured path this paper wires
+into training (Section~\ref{sec:he}), at smaller simulated scale.
+Zheng~\cite{zheng2025wgandp} combines adaptive DP with WGAN-based
+synthetic minority generation for imbalance; our own fix
+(Section~\ref{sec:realdata}) oversamples real examples instead, a
+simpler real-data-only alternative. Tang and Liu~\cite{tang2024sdt} and
+Abbassi et al.~\cite{abbassi2025vaeqlstm} federate sequence
+architectures (an SDT Transformer, and VAE-QLSTM fusion) for
+transaction-level fraud, supporting this paper's own temporal
+Transformer branch (Section~III-A). Zheng~\cite{hzheng2025fedgat}
+compares FedGAT-DCNN, FedAvg+CNN, and FedAvg-DWA+RF, finding
+graph-attention strongest on imbalanced data -- further support for
+graph-structured federated fraud models, which our graph branch
+approximates only partially today.
 
-None of the above systems' reported metrics are reused as numeric
-comparison points in Table~\ref{tab:comparison} or
-Table~\ref{tab:comparison-real}: every number in those tables comes from
-a model we trained ourselves under one controlled, single-test-set
-protocol, since cross-paper metric comparisons across different
-datasets, splits, and imbalance ratios are not a defensible apples-to-
-apples claim regardless of how well each individual source is cited.
+None of the above systems' metrics are reused in
+Table~\ref{tab:comparison} or Table~\ref{tab:comparison-real}: every
+number there comes from a model we trained ourselves under one
+controlled protocol, since cross-paper comparisons across different
+datasets and imbalance ratios are not a defensible apples-to-apples
+claim regardless of how well each source is cited.
 
 \section{System Architecture}
 
@@ -354,39 +342,32 @@ paper.
 \label{sec:he}
 An earlier phase of this project implemented Paillier additive
 homomorphic encryption~\cite{paillier1999} and a tiered proxy-server
-secure-aggregation topology~\cite{bonawitz2017secagg} as correct
-reference code, disconnected from the live training loop. Both are now
-exercised in training. With encryption enabled, each selected client
-scales its update by its own integer sample count in plaintext and
-encrypts the result with the server's public key
-($\mathrm{Enc}(n_k \cdot w_k)$, computed directly rather than via a
-second, equally expensive modular exponentiation under encryption); the
-server homomorphically sums the selected clients' encrypted,
-pre-scaled updates and decrypts only that one aggregate, never an
-individual client's contribution. With secure aggregation additionally
-enabled, each client's encrypted update is instead routed to one of
-$P$ proxy servers (round-robin, $\mathrm{client\_id} \bmod P$), each
-proxy blindly sums the encrypted updates it receives and forwards one
-partial sum, and the global server blindly sums the proxies' partial
-sums before decrypting only the final total -- a collusion-resistance
-property beyond direct client-to-server encryption alone, since an
-attacker would need to control the server \emph{and} every proxy that
-handled a client that round, not the server in isolation.
+secure-aggregation topology~\cite{bonawitz2017secagg} as correct but
+disconnected reference code; both now run in training. With encryption
+enabled, each client scales its update by its sample count and encrypts
+the result with the server's public key ($\mathrm{Enc}(n_k \cdot w_k)$,
+computed directly rather than via a second exponentiation under
+encryption); the server sums the encrypted, pre-scaled updates
+homomorphically and decrypts only the aggregate, never an individual
+contribution. With secure aggregation also enabled, each client's
+encrypted update instead routes to one of $P$ proxy servers
+(round-robin, $\mathrm{client\_id} \bmod P$); each proxy sums what it
+receives and forwards one partial sum, and the server sums the proxies'
+partial sums before decrypting only the final total -- collusion-resistant
+beyond direct client-to-server encryption, since an attacker needs the
+server \emph{and} every proxy that handled a client that round.
 
-Encrypting every one of a 45{,}292-parameter model's values
-individually with 512-bit Paillier keys does not scale in a naive,
-single-process implementation (benchmarked at $\approx$2.3\,ms per
-value, $\approx$104\,s to encrypt one client's full update serially).
-We parallelize encryption and decryption across all available CPU
-cores via a worker pool that receives the public (or private) key once
-per pool rather than once per value. Measured on a real training run
-(3 rounds, 22 CPU cores, 512-bit keys -- demo-speed only, not
-production-secure; 2048-bit keys cost roughly another order of
-magnitude of compute): 31--56\,s to encrypt one client's full update,
-34--41\,s to decrypt the server's aggregate, per round. Adding the
-proxy tier costs almost nothing beyond this: proxy-level aggregation is
-plain modular multiplication rather than exponentiation, measured at
-0.33--0.41\,s per round regardless of client count.
+Encrypting a 45{,}292-parameter model value-by-value with 512-bit
+Paillier keys does not scale naively ($\approx$2.3\,ms/value,
+$\approx$104\,s to encrypt one client's update serially). We
+parallelize encryption/decryption across CPU cores via a worker pool
+initialized with the key once per pool. Measured on a real run (3
+rounds, 22 cores, 512-bit keys -- demo-speed, not production-secure;
+2048-bit keys cost roughly another order of magnitude): 31--56\,s to
+encrypt one client's update, 34--41\,s to decrypt the aggregate, per
+round. The proxy tier adds almost nothing: plain modular
+multiplication, not exponentiation, at 0.33--0.41\,s per round
+regardless of client count.
 
 \section{Experimental Setup}
 \label{sec:setup}
