@@ -2,82 +2,85 @@
 % Draft paper — Federated Fraud Detection with Temporal Graph Transformers
 % and Differential Privacy.
 %
+% Reformatted to the Springer svproc proceedings class per the venue's
+% author guidelines (see latex guildelines/ in the repo root): title page
+% with institute/email, abstract <=250 words with no first person or
+% inline math, 4-6 keywords, Acknowledgements section before References,
+% Springer-style reference list. Content (Introduction through Conclusion)
+% is unchanged from the IEEEtran draft - only structure/formatting changed
+% to match the required template.
+%
 % Describes the SYSTEM AS ACTUALLY IMPLEMENTED AND MEASURED in this repository
 % (see README.md, docs/ARCHITECTURE.md, experiments/run_model_comparison.py,
 % experiments/run_epsilon_sweep.py, experiments/build_real_paysim_splits.py,
 % run_training.py, src/federated/{homomorphic_encryption,proxy_server,
 % dp_accounting}.py). Every number in every table is read directly from a
 % results/*.json file produced by a real run, not asserted. No citation below
-% is a placeholder. This revision adds: real PaySim data (with a data-quality
-% defect found and fixed before trusting any number), Homomorphic Encryption
-% and Secure Aggregation now wired into the live training loop (previously
-% reference-only), and multi-round Renyi-DP composition accounting (which
-% surfaced a correction to every epsilon value reported previously).
+% is a placeholder.
 %
 % Compile with: pdflatex draft_paper.tex   (run twice for refs to settle)
-% Requires: pgfplots/tikz (bundled with all standard TeX distributions,
-% including Overleaf) for Figs. 1-2.
+% Requires: svproc.cls and aliascnt.sty, both in
+% "latex guildelines/styles/" in this repo, copied alongside this .tex
+% file (Overleaf: upload both into the same project folder as this file).
+% multicol is a standard package, already available everywhere. pgfplots/
+% tikz for Figs. 1-2 are likewise bundled with all standard TeX
+% distributions, including Overleaf.
 % =============================================================================
-\documentclass[conference]{IEEEtran}
+\documentclass[12pt]{svproc}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{placeins}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.17}
+\usepackage{url}
+\def\UrlFont{\rmfamily}
 \usepackage[hidelinks]{hyperref}
 
 \begin{document}
+\mainmatter
 
 \title{Federated Fraud Detection with Temporal Graph Transformers and Differential Privacy: A Measured Privacy-Utility Study on Synthetic and Real-World Data}
+\titlerunning{Federated Fraud Detection with Temporal Graph Transformers}
 
-\author{
-\IEEEauthorblockN{Tanishk Maheshwari, Vaibhav Handoo, Vibhav Kolachana, Yash Kuber Khanna, Dr. Prafullata Kiran Auradkar}
-\IEEEauthorblockA{Department of Computer Science and Engineering\\
-PES University, Bengaluru, India}
-}
+\author{Tanishk Maheshwari \and Vaibhav Handoo \and Vibhav Kolachana \and Yash Kuber Khanna \and Prafullata Kiran Auradkar}
+\authorrunning{T. Maheshwari et al.}
+\tocauthor{Tanishk Maheshwari, Vaibhav Handoo, Vibhav Kolachana, Yash Kuber Khanna, Prafullata Kiran Auradkar}
+
+\institute{Department of Computer Science and Engineering, PES University, Bengaluru, India,\\
+\email{tanishkmaheshwari38@gmail.com}}
 
 \maketitle
 
 \begin{abstract}
 Fraud detection across financial institutions is fundamentally a
-multi-party problem: the patterns that distinguish fraud from legitimate
-activity are strongest when observed across many institutions' data, yet
-that data can never be legally or competitively pooled. We present a
-fraud detection system built around a Temporal Graph Transformer with a
-contrastive learning head, trained via federated learning (FedAvg and
-FedProx) across ten simulated bank clients, with every round's aggregate
-protected by client-level differential privacy (DP-FedAvg), Paillier
-homomorphic encryption, and an optional tiered secure-aggregation
-topology -- all three now exercised in the live training loop rather than
-left as reference code. We measure rather than assert: a four-model
-baseline comparison and a full epsilon-vs-utility sweep, each run twice --
-once on a schema-matched synthetic dataset and once on 1.9 million real
-PaySim transactions. The real-data run required finding and fixing a
-genuine upstream data defect first: every client's delivered validation
-and test split was 100\% fraud, which we traced, diagnosed, and rebuilt
-before trusting any downstream number. On real data, a batch-level
-fraud-starvation failure mode additionally required a targeted fix
-(weighted oversampling) before three of four compared models could learn
-anything beyond a degenerate constant prediction -- a structural finding
-about this architecture's regularization requirements under severe
-class imbalance, not a tuning footnote. Finally, implementing formal
-multi-round differential-privacy composition accounting (R\'enyi DP)
-surfaced a correction to every $\varepsilon$ value reported in this and
-prior work on this system: the classical Gaussian-mechanism calibration
-this project uses is provably tight only for $\varepsilon \le 1$, and at
-the project's operating point of $\varepsilon=100$ the true, rigorously
-composed privacy cost is several times larger than the nominal label. We
-report this and every other result in full, including the ones that look
-worse than a rounder number would, because a privacy-utility claim is
-only as credible as the pipeline and accounting behind it.
+multi-party problem: fraud patterns are strongest when observed across
+many institutions' data, yet that data cannot be legally or
+competitively pooled. This paper presents a fraud detection system built
+around a Temporal Graph Transformer with a contrastive learning head,
+trained via federated learning across ten simulated bank clients, with
+every round's aggregate protected by client-level differential privacy,
+homomorphic encryption, and an optional secure-aggregation topology, all
+three exercised in training rather than left as reference code. Results
+are measured rather than asserted: a four-model baseline comparison and
+a full privacy-utility sweep, each run on a synthetic dataset and on 1.9
+million real PaySim transactions. The real-data evaluation required
+fixing a genuine upstream defect first: every client's delivered
+validation and test split was entirely fraudulent, traced and rebuilt
+before trusting any number. A batch-level fraud-starvation failure mode
+required a further fix, weighted oversampling, before most models could
+learn beyond a constant prediction, a structural finding about this
+architecture's regularization needs under severe imbalance rather than
+a tuning footnote. Formal multi-round differential-privacy composition
+accounting further corrected every privacy-budget value reported in
+prior work: the classical noise-calibration approach used is tight only
+in a narrow regime, and at the project's chosen operating point the
+true cost is several times larger than the nominal label. Every result
+is reported in full, including findings that look worse than a rounder
+number would, since a privacy-utility claim is only as credible as the
+pipeline and accounting behind it.
+\keywords{federated learning, differential privacy, fraud detection, temporal graph transformer, homomorphic encryption}
 \end{abstract}
-
-\begin{IEEEkeywords}
-federated learning, differential privacy, fraud detection, temporal
-graph transformer, contrastive learning, FedProx, homomorphic
-encryption, R\'enyi differential privacy
-\end{IEEEkeywords}
 
 \section{Introduction}
 
@@ -813,28 +816,122 @@ more consistent with the differential privacy literature's typical
 operating points, without reintroducing the parameter-count-driven
 instability documented in Section~\ref{sec:lessons}.
 
-\begin{thebibliography}{00}
-\bibitem{mcmahan2017fedavg} H. B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A. y Arcas, ``Communication-Efficient Learning of Deep Networks from Decentralized Data,'' in \textit{Proc. 20th Int. Conf. Artificial Intelligence and Statistics (AISTATS)}, 2017, pp. 1273--1282.
-\bibitem{li2020fedprox} T. Li, A. K. Sahu, M. Zaheer, M. Sanjabi, A. Talwalkar, and V. Smith, ``Federated Optimization in Heterogeneous Networks,'' in \textit{Proc. Machine Learning and Systems (MLSys)}, 2020.
-\bibitem{mcmahan2018dp} H. B. McMahan, D. Ramage, K. Talwar, and L. Zhang, ``Learning Differentially Private Recurrent Language Models,'' in \textit{Proc. Int. Conf. Learning Representations (ICLR)}, 2018.
-\bibitem{dwork2014dp} C. Dwork and A. Roth, ``The Algorithmic Foundations of Differential Privacy,'' \textit{Foundations and Trends in Theoretical Computer Science}, vol. 9, no. 3--4, pp. 211--407, 2014.
-\bibitem{abadi2016dpsgd} M. Abadi, A. Chu, I. Goodfellow, H. B. McMahan, I. Mironov, K. Talwar, and L. Zhang, ``Deep Learning with Differential Privacy,'' in \textit{Proc. ACM SIGSAC Conf. Computer and Communications Security (CCS)}, 2016, pp. 308--318.
-\bibitem{mironov2017rdp} I. Mironov, ``R\'enyi Differential Privacy,'' in \textit{Proc. IEEE 30th Computer Security Foundations Symposium (CSF)}, 2017, pp. 263--275.
-\bibitem{bonawitz2017secagg} K. Bonawitz, V. Ivanov, B. Kreuter, A. Marcedone, H. B. McMahan, S. Patel, D. Ramage, A. Segal, and K. Seth, ``Practical Secure Aggregation for Privacy-Preserving Machine Learning,'' in \textit{Proc. ACM SIGSAC Conf. Computer and Communications Security (CCS)}, 2017, pp. 1175--1191.
-\bibitem{paillier1999} P. Paillier, ``Public-Key Cryptosystems Based on Composite Degree Residuosity Classes,'' in \textit{Proc. EUROCRYPT}, 1999, pp. 223--238.
-\bibitem{lopezrojas2016paysim} E. A. Lopez-Rojas, A. Elmir, and S. Ahmed, ``PaySim: A Financial Mobile Money Simulator for Fraud Detection,'' in \textit{Proc. 28th European Modeling and Simulation Symposium (EMSS)}, 2016.
-\bibitem{vaswani2017attention} A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, ``Attention Is All You Need,'' in \textit{Proc. Advances in Neural Information Processing Systems (NeurIPS)}, 2017.
-\bibitem{chen2020simclr} T. Chen, S. Kornblith, M. Norouzi, and G. Hinton, ``A Simple Framework for Contrastive Learning of Visual Representations,'' in \textit{Proc. Int. Conf. Machine Learning (ICML)}, 2020.
-\bibitem{zhang2023hyfl} H. Zhang, J. Hong, F. Dong, S. Drew, L. Xue, and J. Zhou, ``A Privacy-Preserving Hybrid Federated Learning Framework for Financial Crime Detection,'' \textit{arXiv preprint arXiv:2302.03654}, 2023.
-\bibitem{suzumura2019fedgraph} T. Suzumura, Y. Zhou, N. Baracaldo, G. Ye, K. Houck, R. Kawahara, A. Anwar, L. L. Stavarache, Y. Watanabe, P. Loyola, D. Klyashtorny, H. Ludwig, and K. Bhaskaran, ``Towards Federated Graph Learning for Collaborative Financial Crimes Detection,'' \textit{arXiv preprint arXiv:1909.12946}, 2019.
-\bibitem{sun2025fedsurvey} R. Sun, ``A Comprehensive Investigation of Fraud Detection Behavior in Federated Learning,'' \textit{ITM Web of Conferences}, vol. 70, 2025.
-\bibitem{awosika2024xaifl} T. Awosika, R. M. Shukla, and B. Pranggono, ``Transparency and Privacy: The Role of Explainable AI and Federated Learning in Financial Fraud Detection,'' \textit{IEEE Access}, 2024.
-\bibitem{aljunaid2025xfl} S. K. Aljunaid, S. J. Almheiri, H. Dawood, and M. A. Khan, ``Secure and Transparent Banking: Explainable AI-Driven Federated Learning Model for Financial Fraud Detection,'' \textit{Journal of Risk and Financial Management}, vol. 18, no. 4, p. 179, 2025.
-\bibitem{kanamori2022deepprotect} S. Kanamori, T. Abe, T. Ito, K. Emura, L. Wang, S. Yamamoto, L. T. Phong, K. Abe, S. Kim, R. Nojima, S. Ozawa, and S. Moriai, ``Privacy-Preserving Federated Learning for Detecting Fraudulent Financial Transactions in Japanese Banks,'' \textit{Journal of Information Processing}, vol. 30, 2022.
-\bibitem{zheng2025wgandp} Y. Zheng, ``Bank Data Protection and Fraud Identification Based on Improved Adaptive Federated Learning and WGAN,'' \textit{Scientific Reports}, 2025.
-\bibitem{tang2024sdt} Y. Tang and Z. Liu, ``A Credit Card Fraud Detection Algorithm Based on SDT and Federated Learning,'' \textit{IEEE Access}, 2024.
-\bibitem{abbassi2025vaeqlstm} H. Abbassi, S. El Mendili, and Y. Gahi, ``Adaptive, Privacy-Enhanced Real-Time Fraud Detection in Banking Networks Through Federated Learning and VAE-QLSTM Fusion,'' \textit{Big Data and Cognitive Computing}, vol. 9, no. 7, p. 185, 2025.
-\bibitem{hzheng2025fedgat} H. Zheng, ``Federated Learning-Based Credit Card Fraud Detection: A Comparative Analysis of Advanced Machine Learning Models,'' \textit{ITM Web of Conferences}, 2025.
+\section*{Acknowledgements}
+The authors thank the Department of Computer Science and Engineering,
+PES University, Bengaluru, for the computing resources and support that
+made this work possible.
+
+\begin{thebibliography}{17}
+
+\bibitem{mcmahan2017fedavg}
+McMahan, H.B., Moore, E., Ramage, D., Hampson, S., y Arcas, B.A.:
+Communication-efficient learning of deep networks from decentralized
+data. In: Proc. 20th Int. Conf. Artificial Intelligence and Statistics
+(AISTATS), pp. 1273--1282 (2017)
+
+\bibitem{li2020fedprox}
+Li, T., Sahu, A.K., Zaheer, M., Sanjabi, M., Talwalkar, A., Smith, V.:
+Federated optimization in heterogeneous networks. In: Proc. Machine
+Learning and Systems (MLSys) (2020)
+
+\bibitem{mcmahan2018dp}
+McMahan, H.B., Ramage, D., Talwar, K., Zhang, L.: Learning
+differentially private recurrent language models. In: Proc. Int. Conf.
+Learning Representations (ICLR) (2018)
+
+\bibitem{dwork2014dp}
+Dwork, C., Roth, A.: The algorithmic foundations of differential
+privacy. Foundations and Trends in Theoretical Computer Science 9(3--4),
+211--407 (2014)
+
+\bibitem{abadi2016dpsgd}
+Abadi, M., Chu, A., Goodfellow, I., McMahan, H.B., Mironov, I., Talwar,
+K., Zhang, L.: Deep learning with differential privacy. In: Proc. ACM
+SIGSAC Conf. Computer and Communications Security (CCS), pp. 308--318
+(2016)
+
+\bibitem{mironov2017rdp}
+Mironov, I.: R\'enyi differential privacy. In: Proc. IEEE 30th Computer
+Security Foundations Symposium (CSF), pp. 263--275 (2017)
+
+\bibitem{bonawitz2017secagg}
+Bonawitz, K., Ivanov, V., Kreuter, B., Marcedone, A., McMahan, H.B.,
+Patel, S., Ramage, D., Segal, A., Seth, K.: Practical secure aggregation
+for privacy-preserving machine learning. In: Proc. ACM SIGSAC Conf.
+Computer and Communications Security (CCS), pp. 1175--1191 (2017)
+
+\bibitem{paillier1999}
+Paillier, P.: Public-key cryptosystems based on composite degree
+residuosity classes. In: Proc. EUROCRYPT, pp. 223--238 (1999)
+
+\bibitem{lopezrojas2016paysim}
+Lopez-Rojas, E.A., Elmir, A., Ahmed, S.: PaySim: a financial mobile
+money simulator for fraud detection. In: Proc. 28th European Modeling
+and Simulation Symposium (EMSS) (2016)
+
+\bibitem{vaswani2017attention}
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez,
+A.N., Kaiser, L., Polosukhin, I.: Attention is all you need. In: Proc.
+Advances in Neural Information Processing Systems (NeurIPS) (2017)
+
+\bibitem{chen2020simclr}
+Chen, T., Kornblith, S., Norouzi, M., Hinton, G.: A simple framework for
+contrastive learning of visual representations. In: Proc. Int. Conf.
+Machine Learning (ICML) (2020)
+
+\bibitem{zhang2023hyfl}
+Zhang, H., Hong, J., Dong, F., Drew, S., Xue, L., Zhou, J.: A
+privacy-preserving hybrid federated learning framework for financial
+crime detection. arXiv:2302.03654 (2023)
+
+\bibitem{suzumura2019fedgraph}
+Suzumura, T., Zhou, Y., Baracaldo, N., Ye, G., Houck, K., Kawahara, R.,
+Anwar, A., Stavarache, L.L., Watanabe, Y., Loyola, P., Klyashtorny, D.,
+Ludwig, H., Bhaskaran, K.: Towards federated graph learning for
+collaborative financial crimes detection. arXiv:1909.12946 (2019)
+
+\bibitem{sun2025fedsurvey}
+Sun, R.: A comprehensive investigation of fraud detection behavior in
+federated learning. ITM Web of Conferences 70 (2025)
+
+\bibitem{awosika2024xaifl}
+Awosika, T., Shukla, R.M., Pranggono, B.: Transparency and privacy: the
+role of explainable AI and federated learning in financial fraud
+detection. IEEE Access (2024)
+
+\bibitem{aljunaid2025xfl}
+Aljunaid, S.K., Almheiri, S.J., Dawood, H., Khan, M.A.: Secure and
+transparent banking: explainable AI-driven federated learning model for
+financial fraud detection. Journal of Risk and Financial Management
+18(4), 179 (2025)
+
+\bibitem{kanamori2022deepprotect}
+Kanamori, S., Abe, T., Ito, T., Emura, K., Wang, L., Yamamoto, S.,
+Phong, L.T., Abe, K., Kim, S., Nojima, R., Ozawa, S., Moriai, S.:
+Privacy-preserving federated learning for detecting fraudulent financial
+transactions in Japanese banks. Journal of Information Processing 30
+(2022)
+
+\bibitem{zheng2025wgandp}
+Zheng, Y.: Bank data protection and fraud identification based on
+improved adaptive federated learning and WGAN. Scientific Reports
+(2025)
+
+\bibitem{tang2024sdt}
+Tang, Y., Liu, Z.: A credit card fraud detection algorithm based on SDT
+and federated learning. IEEE Access (2024)
+
+\bibitem{abbassi2025vaeqlstm}
+Abbassi, H., El Mendili, S., Gahi, Y.: Adaptive, privacy-enhanced
+real-time fraud detection in banking networks through federated
+learning and VAE-QLSTM fusion. Big Data and Cognitive Computing 9(7),
+185 (2025)
+
+\bibitem{hzheng2025fedgat}
+Zheng, H.: Federated learning-based credit card fraud detection: a
+comparative analysis of advanced machine learning models. ITM Web of
+Conferences (2025)
+
 \end{thebibliography}
 
 \end{document}
