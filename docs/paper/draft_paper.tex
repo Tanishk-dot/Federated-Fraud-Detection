@@ -38,6 +38,17 @@
 % same content. Overridden here to standard A4 proportions since this
 % venue reviews/prints at normal page size, not Springer's own trim size.
 \usepackage[a4paper,margin=2.5cm]{geometry}
+% svproc's abstract environment insets 1cm on each side (list leftmargin/
+% rightmargin), matching Springer's small native column - against the
+% now-widened body text width that reads as visually disconnected rather
+% than subtly offset, so it's overridden here to span the full text width
+% like the rest of the paper, keeping just the bold "Abstract." run-in label.
+\makeatletter
+\renewenvironment{abstract}{%
+  \list{}{\leftmargin\z@\rightmargin\z@\listparindent\z@\itemindent\listparindent}%
+  \item[\hskip\labelsep\bfseries\abstractname.]}
+  {\endlist}
+\makeatother
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -58,17 +69,20 @@
 \authorrunning{T. Maheshwari et al.}
 \tocauthor{Tanishk Maheshwari, Vaibhav Handoo, Vibhav Kolachana, Yash Kuber Khanna, Prafullata Kiran Auradkar}
 
-\institute{Department of Computer Science and Engineering, PES University, Bengaluru, India,\\
-\email{tanishkmaheshwari38@gmail.com}}
+\institute{Department of Computer Science and Engineering, PES University, Bengaluru, India}
 
 \maketitle
 
 % Keep the section/title running head on odd pages (\rightmark, via
-% \titlerunning above), drop only the author-name running head svproc
-% puts on even pages (\leftmark, via \authorrunning above) - by request.
-% Page numbers on even pages are preserved; only the author name is removed.
+% \titlerunning above), drop the author-name running head svproc puts on
+% even pages (\leftmark, via \authorrunning above) - by request. Move the
+% page number out of the header entirely and into the bottom-right
+% footer instead (svproc's default puts it top-left/top-right in the head).
 \makeatletter
-\def\@evenhead{\normalfont\small\rlap{\thepage}\hspace{\headlineindent}\hfil}
+\def\@oddhead{\normalfont\small\hfil\rightmark\hspace{\headlineindent}}
+\def\@evenhead{\normalfont\small\hfil}
+\def\@oddfoot{\normalfont\small\hfil\thepage}
+\def\@evenfoot{\normalfont\small\hfil\thepage}
 \makeatother
 
 \begin{abstract}
