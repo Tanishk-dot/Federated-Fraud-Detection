@@ -5,10 +5,13 @@
 % Reformatted to the Springer svproc proceedings class per the venue's
 % author guidelines (see latex guildelines/ in the repo root): title page
 % with institute/email, abstract <=250 words with no first person or
-% inline math, 4-6 keywords, Acknowledgements section before References,
-% Springer-style reference list. Content (Introduction through Conclusion)
-% is unchanged from the IEEEtran draft - only structure/formatting changed
-% to match the required template.
+% inline math, 4-6 keywords, Springer-style reference list with in-text
+% citation numbers assigned in order of first appearance (not grouped by
+% topic). No standalone Acknowledgements/Assumptions sections by request -
+% what would otherwise live in Assumptions is folded inline at the point
+% each caveat is actually relevant (graph branch: Section III-A; non-IID
+% clients: Section III-B; real-vs-synthetic framing: Section V-C; DP
+% per-example clipping: Section V-E).
 %
 % Describes the SYSTEM AS ACTUALLY IMPLEMENTED AND MEASURED in this repository
 % (see README.md, docs/ARCHITECTURE.md, experiments/run_model_comparison.py,
@@ -194,7 +197,7 @@ anti-money-laundering, reporting a $\approx$20\% accuracy improvement
 over isolated local models on the UK FCA TechSprint dataset --
 motivating evidence for exactly the kind of cross-institution graph
 signal our own graph branch is intended for, though not yet wired to
-real entity-linked edges (Section~\ref{sec:limitations}). Sun's
+real entity-linked edges (Section~\ref{sec:graphbranch}). Sun's
 comparative study~\cite{sun2025fedsurvey} benchmarks ANN, Random
 Forest, and CNN clients under FL specifically for fraud, finding RF
 more robust to non-IID data but communication-heavier -- a tradeoff our
@@ -243,6 +246,7 @@ apples claim regardless of how well each individual source is cited.
 \section{System Architecture}
 
 \subsection{Temporal Graph Transformer}
+\label{sec:graphbranch}
 Each client account's transaction history is windowed into a
 fixed-length sequence of its ten most recent transactions, each encoded
 as a 10-dimensional feature vector (normalized amount, hour-of-day,
@@ -252,8 +256,12 @@ velocity, card age, transaction frequency in the last 24 hours, and a
 weekend flag). A four-layer Transformer encoder processes this
 sequence. A parallel graph branch encodes each account's own transaction
 profile; in the experiments reported here this branch operates on each
-account as an isolated node, not a multi-entity relational graph
-(Section~\ref{sec:limitations} discusses why). A cross-modal fusion
+account as an isolated node, not a multi-entity relational graph. A
+real heterogeneous graph encoder (HGTConv, 3 layers/8 heads) is fully
+implemented but needs real entity-linked edges -- shared user/merchant/
+card/device identifiers -- that the preprocessed sequence data does not
+carry, so what runs in the experiments below is the simplified
+per-account encoder instead. A cross-modal fusion
 layer combines the two branches via bidirectional attention. Two heads
 sit on top of the fused
 representation: a supervised binary cross-entropy head for the primary
@@ -276,7 +284,12 @@ FedProx's proximal-term regularization ($\mu=0.1$), which penalizes a
 client's local update for drifting far from the current global model --
 the mechanism that keeps training stable when only a minority of
 clients are sampled per round and those clients disagree with each
-other's local optima. Section~\ref{sec:realdata} reports that this
+other's local optima. The ten simulated clients here draw from
+independent but not systematically heterogeneous distributions --
+genuine per-institution non-IID structure, with different fraud
+patterns rather than just different random samples, is not yet modeled,
+even though it is part of why FedProx was chosen over plain FedAvg in
+the first place. Section~\ref{sec:realdata} reports that this
 regularization is not merely helpful but \emph{necessary} on real data
 under severe class imbalance: the FedAvg-no-DP baseline, which lacks it,
 fails to learn a usable decision boundary even with the same data fix
@@ -545,8 +558,11 @@ no-DP ceiling.}
 
 \subsection{Real-Data Results}
 \label{sec:realdata-results}
-We repeat the same two measurements on the real PaySim data described
-in Section~\ref{sec:realdata} (client 9 excluded as documented), with a
+All synthetic-data numbers above remain a pipeline-correctness check,
+not a real-world performance claim; this subsection is the real-world
+one. We repeat the same two measurements on the real PaySim data
+described in Section~\ref{sec:realdata} (client 9 excluded as
+documented), with a
 weighted-oversampling fraud rate target of 2\% per batch -- the value
 found, by sweeping the oversampling target against the fraud-starved
 baseline, to improve both F1 and recall simultaneously rather than only
@@ -708,10 +724,11 @@ the commonly quoted nominal ``$\varepsilon=100$'' label alone would
 suggest. We report this in full rather than retroactively rounding
 earlier sections' nominal labels: this project's actual cumulative
 privacy budget over a real training run is in the thousands, not the
-hundreds, and closing that gap -- via per-example gradient clipping to
-reduce the effective dimensionality DP noise must cover, or a smaller
-per-round $\varepsilon$ made viable by further right-sizing -- is the
-clearest concrete next step this accounting identifies
+hundreds, and closing that gap -- via per-example gradient clipping
+(e.g.\ with Opacus, a listed but so far unused dependency in this
+project) to reduce the effective dimensionality DP noise must cover, or
+a smaller per-round $\varepsilon$ made viable by further right-sizing --
+is the clearest concrete next step this accounting identifies
 (Section~\ref{sec:conclusion}).
 
 \subsection{Engineering Lessons}
@@ -759,32 +776,6 @@ both strong evidence the reference code had never previously been run
 end-to-end on this platform, consistent with it having been
 disconnected from training until this work.
 
-\subsection{Assumptions}
-\label{sec:limitations}
-The results above rest on a set of assumptions and scope boundaries,
-reported here plainly rather than rounded up. All synthetic-data
-numbers remain a pipeline-correctness check, not a real-world
-performance claim; Section~\ref{sec:realdata-results} shows the
-real-data numbers are meaningfully lower, as expected given real
-PaySim's roughly 45$\times$ sharper imbalance than the synthetic
-benchmark. Client 9's anomalous real-data fraud rate
-(Section~\ref{sec:realdata}) remains unexplained and is excluded rather
-than corrected. The graph branch remains a simplified per-account
-encoder, not a relational graph over shared entities, pending real
-entity-linked edge data that our preprocessed sequence data does not
-carry. The ten simulated clients draw from independent but not
-systematically heterogeneous distributions; genuine per-institution
-non-IID structure (different fraud patterns, not just different random
-samples) is not yet modeled, despite FedProx being chosen partly for
-non-IID robustness. All $\varepsilon$ values in this paper, including
-the corrected ones in Table~\ref{tab:eps-correction}, use the
-$(\varepsilon,\delta)$-DP framework applied at the level of one
-client's entire round contribution; we have not evaluated per-example
-gradient clipping (e.g.\ via Opacus, a listed but unused dependency),
-which would reduce the effective dimensionality DP noise must cover and
-is the most direct lever for lowering the now-corrected $\varepsilon$
-values in Table~\ref{tab:accounting-real}.
-
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 We presented a federated, differentially private, homomorphically
@@ -805,23 +796,24 @@ as important as the headline utility numbers, in keeping with this
 paper's governing principle that a privacy-utility claim is only as
 trustworthy as the accounting and pipeline behind it.
 
-Future work follows directly from Section~\ref{sec:limitations}:
-modeling genuine per-institution non-IID data rather than independent
-samples from shared distributions, extending the graph branch to real
-cross-account entity links, diagnosing client 9's real-data anomaly
-rather than excluding it, and per-example gradient clipping to bring
-the now-corrected cumulative $\varepsilon$ in
-Table~\ref{tab:accounting-real} down from the thousands toward a range
-more consistent with the differential privacy literature's typical
-operating points, without reintroducing the parameter-count-driven
-instability documented in Section~\ref{sec:lessons}.
+Future work is scoped around four concrete directions, each with a
+clear starting point already in place rather than an open question.
+First, modeling genuine per-institution non-IID data instead of
+independent samples from shared distributions. Second, wiring the
+graph branch to real cross-account entity links: the heterogeneous
+graph encoder itself is already implemented (Section~\ref{sec:graphbranch})
+and only needs entity-linked edge data the current preprocessing does
+not yet produce. Third, diagnosing client 9's real-data anomaly
+(Section~\ref{sec:realdata}) now that it has been isolated and
+documented rather than silently corrected. Fourth, per-example
+gradient clipping to bring the corrected cumulative $\varepsilon$ in
+Table~\ref{tab:accounting-real} (Section~\ref{sec:accounting}) down
+from the thousands toward a range more consistent with the
+differential privacy literature's typical operating points, without
+reintroducing the parameter-count-driven instability documented in
+Section~\ref{sec:lessons}.
 
-\section*{Acknowledgements}
-The authors thank the Department of Computer Science and Engineering,
-PES University, Bengaluru, for the computing resources and support that
-made this work possible.
-
-\begin{thebibliography}{17}
+\begin{thebibliography}{21}
 
 \bibitem{mcmahan2017fedavg}
 McMahan, H.B., Moore, E., Ramage, D., Hampson, S., y Arcas, B.A.:
@@ -829,20 +821,10 @@ Communication-efficient learning of deep networks from decentralized
 data. In: Proc. 20th Int. Conf. Artificial Intelligence and Statistics
 (AISTATS), pp. 1273--1282 (2017)
 
-\bibitem{li2020fedprox}
-Li, T., Sahu, A.K., Zaheer, M., Sanjabi, M., Talwalkar, A., Smith, V.:
-Federated optimization in heterogeneous networks. In: Proc. Machine
-Learning and Systems (MLSys) (2020)
-
 \bibitem{mcmahan2018dp}
 McMahan, H.B., Ramage, D., Talwar, K., Zhang, L.: Learning
 differentially private recurrent language models. In: Proc. Int. Conf.
 Learning Representations (ICLR) (2018)
-
-\bibitem{dwork2014dp}
-Dwork, C., Roth, A.: The algorithmic foundations of differential
-privacy. Foundations and Trends in Theoretical Computer Science 9(3--4),
-211--407 (2014)
 
 \bibitem{abadi2016dpsgd}
 Abadi, M., Chu, A., Goodfellow, I., McMahan, H.B., Mironov, I., Talwar,
@@ -850,9 +832,14 @@ K., Zhang, L.: Deep learning with differential privacy. In: Proc. ACM
 SIGSAC Conf. Computer and Communications Security (CCS), pp. 308--318
 (2016)
 
-\bibitem{mironov2017rdp}
-Mironov, I.: R\'enyi differential privacy. In: Proc. IEEE 30th Computer
-Security Foundations Symposium (CSF), pp. 263--275 (2017)
+\bibitem{dwork2014dp}
+Dwork, C., Roth, A.: The algorithmic foundations of differential
+privacy. Foundations and Trends in Theoretical Computer Science 9(3--4),
+211--407 (2014)
+
+\bibitem{paillier1999}
+Paillier, P.: Public-key cryptosystems based on composite degree
+residuosity classes. In: Proc. EUROCRYPT, pp. 223--238 (1999)
 
 \bibitem{bonawitz2017secagg}
 Bonawitz, K., Ivanov, V., Kreuter, B., Marcedone, A., McMahan, H.B.,
@@ -860,14 +847,19 @@ Patel, S., Ramage, D., Segal, A., Seth, K.: Practical secure aggregation
 for privacy-preserving machine learning. In: Proc. ACM SIGSAC Conf.
 Computer and Communications Security (CCS), pp. 1175--1191 (2017)
 
-\bibitem{paillier1999}
-Paillier, P.: Public-key cryptosystems based on composite degree
-residuosity classes. In: Proc. EUROCRYPT, pp. 223--238 (1999)
+\bibitem{li2020fedprox}
+Li, T., Sahu, A.K., Zaheer, M., Sanjabi, M., Talwalkar, A., Smith, V.:
+Federated optimization in heterogeneous networks. In: Proc. Machine
+Learning and Systems (MLSys) (2020)
 
 \bibitem{lopezrojas2016paysim}
 Lopez-Rojas, E.A., Elmir, A., Ahmed, S.: PaySim: a financial mobile
 money simulator for fraud detection. In: Proc. 28th European Modeling
 and Simulation Symposium (EMSS) (2016)
+
+\bibitem{mironov2017rdp}
+Mironov, I.: R\'enyi differential privacy. In: Proc. IEEE 30th Computer
+Security Foundations Symposium (CSF), pp. 263--275 (2017)
 
 \bibitem{vaswani2017attention}
 Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez,
