@@ -30,6 +30,14 @@
 % distributions, including Overleaf.
 % =============================================================================
 \documentclass[12pt]{svproc}
+% svproc's own page geometry (textwidth=12.2cm, textheight=19.3cm) is the
+% Springer LNCS *book* trim size (~6.75in x 9.25in physical page), meant
+% for print-shop typesetting, not a standalone standard-page submission -
+% on a normal A4/Letter PDF canvas it renders as a narrow column floating
+% in a large blank margin, and costs roughly 2x the page count for the
+% same content. Overridden here to standard A4 proportions since this
+% venue reviews/prints at normal page size, not Springer's own trim size.
+\usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -54,6 +62,14 @@
 \email{tanishkmaheshwari38@gmail.com}}
 
 \maketitle
+
+% Keep the section/title running head on odd pages (\rightmark, via
+% \titlerunning above), drop only the author-name running head svproc
+% puts on even pages (\leftmark, via \authorrunning above) - by request.
+% Page numbers on even pages are preserved; only the author name is removed.
+\makeatletter
+\def\@evenhead{\normalfont\small\rlap{\thepage}\hspace{\headlineindent}\hfil}
+\makeatother
 
 \begin{abstract}
 Fraud detection across financial institutions is fundamentally a
