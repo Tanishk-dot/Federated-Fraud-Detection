@@ -46,7 +46,7 @@
 \makeatletter
 \renewenvironment{abstract}{%
   \list{}{\leftmargin\z@\rightmargin\z@\listparindent\z@\itemindent\listparindent}%
-  \item[\hskip\labelsep\bfseries\abstractname.]}
+  \item[\hskip\labelsep\bfseries\abstractname]}
   {\endlist}
 \makeatother
 \usepackage{amsmath,amssymb}
@@ -143,27 +143,24 @@ one: the server never observes an individual client's update in
 plaintext at all, not just a noised version of it.
 
 This paper makes four contributions, each grounded in a real, measured
-run rather than an assumption. First, we describe a fraud detection
-architecture -- a Temporal Graph Transformer with a contrastive learning
-head -- trained under FedProx~\cite{li2020fedprox} with client-level
-DP-FedAvg~\cite{mcmahan2018dp}, and report its performance against real,
-non-fabricated baselines on one shared held-out test set
-(Section~\ref{sec:results}). Second, we repeat every such measurement on
-1.9 million real PaySim transactions~\cite{lopezrojas2016paysim}, not
-only a synthetic stand-in, after finding and fixing a genuine
-data-quality defect in the delivered splits
-(Section~\ref{sec:realdata}). Third, we wire Paillier homomorphic
-encryption and a tiered secure-aggregation topology into the live
+run rather than an assumption: a fraud detection architecture -- a
+Temporal Graph Transformer with a contrastive learning head -- trained
+under FedProx~\cite{li2020fedprox} with client-level
+DP-FedAvg~\cite{mcmahan2018dp} and benchmarked against real baselines
+on one shared held-out test set (Section~\ref{sec:results}); every such
+measurement repeated on 1.9 million real PaySim
+transactions~\cite{lopezrojas2016paysim}, not only a synthetic
+stand-in, after finding and fixing a genuine data-quality defect in the
+delivered splits (Section~\ref{sec:realdata}); Paillier homomorphic
+encryption and a tiered secure-aggregation topology wired into the live
 training loop -- previously correct but disconnected reference code --
-and report their real, measured computational overhead
-(Section~\ref{sec:he}). Fourth, we implement formal multi-round
-R\'enyi-DP composition accounting and report the real cumulative privacy
-cost of a training run, which turns out to correct, not merely
-supplement, every per-round $\varepsilon$ value this project has
-previously reported (Section~\ref{sec:accounting}). We consider the
+with real, measured computational overhead (Section~\ref{sec:he}); and
+formal multi-round R\'enyi-DP composition accounting, which corrects,
+not merely supplements, every per-round $\varepsilon$ value this
+project has previously reported (Section~\ref{sec:accounting}). The
 discipline behind these four contributions -- measuring rather than
-asserting, and reporting defects and corrections rather than only
-successes -- as important as the headline numbers themselves.
+asserting, and reporting corrections rather than only successes -- is
+as important as the headline numbers themselves.
 
 \section{Related Work}
 
@@ -388,55 +385,45 @@ pooled across all clients.
 \label{sec:realdata}
 We additionally evaluate on 1.9 million real PaySim
 transactions~\cite{lopezrojas2016paysim}, pre-windowed into 2.86 million
-ten-step sequences and partitioned across the same ten simulated
-clients. Before this data could be used, we found and fixed a genuine
-defect in how it had been delivered: \emph{every client's validation and
-test split was 100\% fraud}, with zero legitimate sequences present,
-verified on the complete files rather than a sample. A split with only
-one class present makes precision, ROC-AUC, and a confusion matrix
-undefined, so training against the delivered splits directly would have
-produced numbers that looked like metrics but measured nothing.
+ten-step sequences across the same ten simulated clients. Before use,
+we found and fixed a genuine delivery defect: \emph{every client's
+validation and test split was 100\% fraud}, with zero legitimate
+sequences, verified on the complete files. A split with only one class
+makes precision, ROC-AUC, and a confusion matrix undefined, so training
+against the delivered splits would have produced numbers that looked
+like metrics but measured nothing.
 
-We first attempted the natural-seeming fix of pooling each client's
-train, validation, and test rows together and re-splitting with proper
-stratification. This was the wrong fix: it merely redistributed the
-same corruption evenly, producing a uniform $\approx$30\% fraud rate in
-every resulting split for every client, nowhere near real PaySim's
-documented $\approx$0.13\% rate -- proof that the delivered
-validation/test files were a separate, inflated fraud pool bolted onto
-an otherwise clean training file, not simply misassigned legitimate
-rows. The working fix discards the delivered validation/test files
-entirely and rebuilds all three splits from each client's \emph{training}
-file alone (0.04--0.17\% fraud for nine of ten clients, the correct
-order of magnitude for real PaySim) via a fresh stratified 70/15/15
-split. One client (client 9) is a separate, unexplained anomaly --
-46.9\% fraud in its own original training file, roughly three orders of
-magnitude above its peers -- carried through unmodified and excluded
-from the real-data results below rather than silently normalized, since
-its root cause could not be determined (the preprocessing configuration
-referenced in the delivered dataset's own metadata does not exist
-anywhere in our pipeline).
+The natural-seeming fix -- pooling each client's train/val/test rows
+and re-splitting with stratification -- was wrong: it redistributed the
+same corruption evenly, producing a uniform $\approx$30\% fraud rate
+everywhere, nowhere near real PaySim's documented $\approx$0.13\% --
+proof the delivered val/test files were a separate, inflated fraud
+pool bolted onto an otherwise clean training file, not misassigned
+legitimate rows. The working fix discards the delivered val/test files
+and rebuilds all three splits from each client's \emph{training} file
+alone (0.04--0.17\% fraud for nine of ten clients, the correct order of
+magnitude) via a fresh stratified 70/15/15 split. Client 9 is a
+separate, unexplained anomaly -- 46.9\% fraud in its own training file,
+three orders of magnitude above its peers -- carried through unmodified
+and excluded below rather than silently normalized, since its root
+cause could not be determined (the preprocessing configuration the
+dataset's own metadata references does not exist in our pipeline).
 
 \emph{Fraud-starvation under real-world imbalance.} Real PaySim's
-$\approx$0.1--0.3\% per-client fraud rate, combined with a training
-batch size of 64, puts the expected number of fraud examples in a
-typical batch below one. Standard loss-level class reweighting
-(a positive-class weight in the binary cross-entropy loss) has nothing
-to act on in a batch that contains no positive examples at all, and we
-verified this empirically: sweeping the positive-class weight from 8 to
-400 produced a byte-identical confusion matrix at every setting,
-because per-batch gradient-norm clipping saturates the weighting's
-effect once the batch itself is starved of signal. Post-hoc decision
-threshold tuning on the resulting checkpoint recovered essentially no
-additional F1, confirming the bottleneck was upstream of both the loss
-function and the operating threshold. We fix this with weighted
-oversampling (a per-batch sampler that targets a fixed fraction of
-fraud examples per batch, independent of the true class ratio) and
-report, in Section~\ref{sec:realdata-results}, that this is necessary
-but, for two of the four compared models, not sufficient on its own:
-models lacking FedProx's proximal term or DP's noise as additional
-training-time regularization remained unable to learn past oversampling
-alone.
+$\approx$0.1--0.3\% per-client fraud rate with batch size 64 puts the
+expected fraud count per batch below one. Loss-level class reweighting
+has nothing to act on in a batch with no positive examples, verified
+empirically: sweeping the positive-class weight from 8 to 400 produced
+a byte-identical confusion matrix every time, since per-batch
+gradient-norm clipping saturates the weighting's effect once the batch
+itself is starved. Post-hoc threshold tuning recovered essentially no
+F1, confirming the bottleneck was upstream of both loss and threshold.
+We fix this with weighted oversampling (a per-batch sampler targeting a
+fixed fraud fraction, independent of the true class ratio), necessary
+but, for two of four compared models, not sufficient alone
+(Section~\ref{sec:realdata-results}): models lacking FedProx's
+proximal term or DP's noise as regularization stayed unable to learn
+past oversampling.
 
 \subsection{Model Comparison Protocol}
 Four models are compared under identical evaluation conditions, on both
@@ -595,20 +582,18 @@ Federated, no DP        & 84.2\% & 0.3\%  & 69.3\% & 0.7\%  & 84.8\% \\
 \end{tabular}
 \end{table}
 
-This result is not simply ``lower numbers than synthetic'' -- it is
+This is not simply ``lower numbers than synthetic'' -- it is
 structurally different. Weighted oversampling alone did not stabilize
-every model. Centralized Deep stayed fully collapsed (F1 = 0, ROC-AUC =
-0.5, indistinguishable from random, even after four fresh-initialization
-retries); Federated FedAvg without DP inverted into the opposite
-failure mode, flagging 42{,}723 of 227{,}410 legitimate transactions as
-fraud (an effective precision of 0.3\%) rather than learning a real
-decision boundary. Only FedProx + DP -- the only one of the four models
-with \emph{both} a proximal term and DP noise acting as training-time
-regularization -- produced a stable, non-degenerate result. We read
-this as a real property of the architecture under severe real-world
-class imbalance, not a bug to retune away: oversampling fixes
-batch-level fraud starvation, but does not substitute for the
-regularization that FedProx's proximal term and DP's Gaussian noise
+every model: Centralized Deep stayed fully collapsed (F1 = 0, ROC-AUC =
+0.5, indistinguishable from random, even after four retries); Federated
+FedAvg without DP inverted into the opposite failure, flagging
+42{,}723 of 227{,}410 legitimate transactions as fraud (precision
+0.3\%) rather than learning a real boundary. Only FedProx + DP -- the
+only model with \emph{both} a proximal term and DP noise as
+training-time regularization -- produced a stable result. This is a
+real property of the architecture under severe imbalance, not a bug to
+retune away: oversampling fixes batch-level fraud starvation but does
+not substitute for the regularization FedProx and DP's noise
 independently provide.
 
 \begin{table}[!t]
@@ -644,16 +629,13 @@ regularization under this real, severe imbalance, not purely as a
 privacy tax.
 
 \subsection{Encryption and Secure Aggregation}
-Section~\ref{sec:he} reported the real, measured computational
-overhead of homomorphic encryption and secure aggregation now wired
-into training. We note here, for completeness, that these mechanisms
-were verified correct independent of model quality: homomorphic
-weighted aggregation was confirmed algebraically identical to plaintext
-FedAvg aggregation up to floating-point rounding on synthetic test
-vectors before being exercised on real model updates, and the
-proxy-tiered variant was verified to correctly handle a proxy receiving
-zero client updates in a given round (a real occurrence whenever fewer
-clients are selected than proxies configured) without error.
+Beyond Section~\ref{sec:he}'s measured overhead, both mechanisms were
+verified correct independent of model quality: homomorphic weighted
+aggregation matched plaintext FedAvg aggregation algebraically, up to
+floating-point rounding, on synthetic test vectors before being
+exercised on real updates; the proxy-tiered variant correctly handles a
+proxy receiving zero client updates in a round (a real occurrence
+whenever fewer clients are selected than proxies configured).
 
 \subsection{Multi-Round Differential Privacy Accounting}
 \label{sec:accounting}
@@ -669,14 +651,13 @@ addition across rounds at each fixed $\alpha$, and the sum is converted
 back to a single $(\varepsilon,\delta)$-DP guarantee by selecting
 whichever $\alpha$ gives the tightest result.
 
-Implementing and validating this accountant surfaced a finding more
-significant than ``no cumulative total previously existed.'' The
-classical Gaussian-mechanism calibration this project uses throughout
-(Section~\ref{sec:dp-mechanism}, following Dwork and
-Roth~\cite{dwork2014dp}) is proven tight only for $\varepsilon \le 1$.
-We verified numerically, across the actual range of nominal
-$\varepsilon$ this project uses, that the RDP-tight \emph{true}
-single-round privacy cost diverges substantially above that threshold:
+Implementing this accountant surfaced a finding more significant than
+a missing cumulative total: the classical Gaussian-mechanism
+calibration used throughout (Section~\ref{sec:dp-mechanism}, following
+Dwork and Roth~\cite{dwork2014dp}) is proven tight only for
+$\varepsilon \le 1$. Numerically, across the nominal $\varepsilon$
+range this project uses, the RDP-tight \emph{true} single-round cost
+diverges substantially above that threshold:
 
 \begin{table}[!t]
 \caption{Nominal vs.\ RDP-tight true single-round $\varepsilon$ ($\delta=10^{-5}$)}
@@ -768,24 +749,22 @@ the usable DP $\varepsilon$ floor by roughly two orders of magnitude,
 purely from right-sizing, exactly as $\sigma\sqrt{d}$ scaling predicts.
 
 \textit{3) A NaN-masking bug hiding a real training failure.}
-Guarding every loss term with a NaN-to-zero substitution prevented
-crashes but let the model silently continue training on a degenerate
-prediction once corrupted, because a NaN auxiliary loss term corrupted
-the total loss via $0.0 \times \mathrm{NaN} = \mathrm{NaN}$ even at zero
-loss weight (IEEE~754 semantics). We fixed this by sanitizing model
-outputs at their source, and by adding per-round checkpoint rollback so
-a collapsed round cannot poison subsequent training.
+A NaN-to-zero substitution on every loss term prevented crashes but let
+the model silently continue training on a degenerate prediction once
+corrupted, since a NaN auxiliary term corrupted the total loss via
+$0.0 \times \mathrm{NaN} = \mathrm{NaN}$ even at zero weight
+(IEEE~754 semantics). Fixed by sanitizing outputs at their source and
+adding per-round checkpoint rollback so a collapsed round cannot poison
+later training.
 
 \textit{4) A Windows-specific multiprocessing crash in dormant reference
-code.} Wiring the homomorphic encryption reference implementation into
-live training (Section~\ref{sec:he}) immediately surfaced a
-\texttt{UnicodeEncodeError} crash from emoji characters in its
-diagnostic output on Windows' default console encoding, and separately
-a process-pool crash that only reproduced when invoked through the
-actual training entry point rather than an isolated interactive test --
-both strong evidence the reference code had never previously been run
-end-to-end on this platform, consistent with it having been
-disconnected from training until this work.
+code.} Wiring the HE reference implementation into live training
+(Section~\ref{sec:he}) surfaced a \texttt{UnicodeEncodeError} from
+emoji characters in its diagnostic output on Windows' default console
+encoding, and a process-pool crash reproducible only through the actual
+training entry point, not an isolated test -- evidence the reference
+code had never been run end-to-end on this platform before, consistent
+with it being disconnected from training until this work.
 
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
